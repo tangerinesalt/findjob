@@ -58,6 +58,15 @@ class Updates(unittest.TestCase):
                 target.publish(task['task'], '应拒绝不同步的基本信息')
             self.assertEqual(json.loads(target.read(task['task']))['status'], 'draft')
 
+    def test_inspection_limits_output_to_requested_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / '清单.md'
+            source.write_text(self.source(), encoding='utf-8')
+            task = target.prepare(directory, 'enrich', '2026-09-28', report=str(source))
+            value = target.inspect_report(task['task'], '01', ['benefits'])
+            self.assertEqual(value['text'], '- **福利**：未核实。')
+            self.assertLess(len(json.dumps(value)), len(self.source()))
+
     def test_legacy_bad_separator_is_repaired_without_json_run(self):
         old = self.source().replace('|---|---|---|---|---|---|---|---|', '|---|---|---|---|---|---|---|---|---|')
         updated, _ = fmt.apply(old, {'jobs': []})

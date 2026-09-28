@@ -1,27 +1,16 @@
 """Small append/status helper for search and follow-up ledgers; no network calls."""
 import argparse
+import importlib.util
 import json
 import os
 from pathlib import Path
 import tempfile
 
 
-def read(path):
-    return json.loads(Path(path).read_text(encoding='utf-8-sig'))
-
-
-def write(path, data):
-    path = Path(path)
-    fd, name = tempfile.mkstemp(prefix='ledger-', suffix='.tmp', dir=path.parent)
-    try:
-        with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as stream:
-            json.dump(data, stream, ensure_ascii=False, indent=2)
-            stream.write('\n')
-        os.replace(name, path)
-    finally:
-        if os.path.exists(name):
-            os.unlink(name)
-
+_store_spec = importlib.util.spec_from_file_location('fingjob_file_store', Path(__file__).resolve().parents[3] / 'scripts/file_store.py')
+file_store = importlib.util.module_from_spec(_store_spec)
+_store_spec.loader.exec_module(file_store)
+read, write = file_store.load, file_store.save
 
 def record(path, event, page=False):
     data = read(path)

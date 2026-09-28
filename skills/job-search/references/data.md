@@ -81,7 +81,7 @@ init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`�
 - dates.kind：published/refreshed/job_time/crawled。crawled 永远不证明招聘新鲜度；job_time 用刷新窗口。用来筛选的日期必须有短证据和有效网页 URL。截止日不是发布日期。
 - salary.period：month/year/day/hour/unknown；currency 为原始币种。min/max 为元数值或 null，months 为明确的年发薪月数或 null。面议/未披露用 period=unknown，min=max=null，原文写在 text。已知任一数值必须提供 salary 证据。
 - evidence 为上述判断依据。缺失不等于通过；筛选输出“待核实”。证据 note 用改写的短描述，不抄整段内容。
-- details 允许 duties、requirements、benefits、work_time、overtime、insured、legal_risk；每项为 text 与 sources URL 列表。未取得就省略，脚本会标未披露/未核实，不能填造假来源。
+- details 允许 duties、requirements、benefits、work_time、overtime、insured、legal_risk；每项为 text 与 sources URL 列表。未取得就省略，脚本标未核实，不能填造假来源。
 - 详情可选 status 区分 verified/not_disclosed/unverified/blocked/conflict；未采集默认未核实，不等同已查未披露。scope/entity/year/observed_at 记录适用范围、法人、年报年份及访问日；详细格式及后续更新见 [updates.md](updates.md)，仅需局部更新时读取。
 - discussions 每项为 `{"text":"个人反馈摘要，未独立证实","url":"https://...","date":"2025-04-01或未披露","scope":"公司层面，非特定岗位"}`。
 - notes 放冲突/局限；主要岗位身份、日期、薪资有冲突未解决时，将相应判断保持 unknown，或不提供未经确认的数值。
@@ -89,3 +89,5 @@ init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`�
 - `check` 先稳定合并重复记录的互补证据，再筛选；不会改写原始 jobs。核心值冲突列待核实，保留各来源，代理按实际证据解决后再更新原记录。输出默认按日期倒序，同日按公司/岗位/地点/链接稳定排序；画像偏好展示但不自动评分。
 
 `check` 返回 kept/excluded/pending/duplicates 和 errors。结构错误返回非零退出码；被正常筛掉不是执行错误。`render` 只将 kept 写入简表和详情，末尾提供未纳入原因与来源访问情况。程序不能验证人写的 evidence 是否真实，仍需原页核实。
+
+默认 check 不打印完整合并记录；需要定位冲突时加 `--full`。常规调用无需读取脚本源码。画像解析/校验与原子存储由插件根目录 scripts 共用，分发时保留完整插件结构，不单拷入口文件。

@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import html
 import json
+import math
 from pathlib import Path
 import re
 
@@ -167,3 +168,49 @@ def save_new(profile, workspace):
             return path
         except FileExistsError:
             number += 1
+
+
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
+
+def number(value):
+    return type(value) in (int, float) and math.isfinite(value) and value >= 0
+
+
+
+def strings(value):
+    return isinstance(value, list) and all(isinstance(x, str) and x.strip() for x in value)
+
+
+
+def validate_profile(p):
+    require(isinstance(p, dict), "profile 必须为对象")
+    required = {"schema_version", "name", "keywords", "locations", "exclude_games", "exclude_headhunters", "include_adjacent", "freshness", "salary", "budget", "preferences"}
+    optional = {"hard_requirements", "target_roles", "excluded_keywords", "excluded_locations", "employment_types", "work_arrangements", "background", "exclude_unclear_employers"}
+    require(required <= p.keys() and p.keys() <= required | optional, "画像字段缺失或未知")
+    require(type(p["schema_version"]) is int and p["schema_version"] == 1, "仅支持画像 schema_version=1")
+    require(isinstance(p["name"], str) and p["name"].strip(), "画像缺少 name")
+    for key in ("keywords", "locations", "preferences", "hard_requirements", "target_roles", "excluded_keywords", "excluded_locations", "employment_types", "work_arrangements"):
+        require(strings(p.get(key, [])), f"画像 {key} 必须为字符串数组")
+    require(bool(p["keywords"]), "画像必须给出目标岗位关键词")
+    for key in ("exclude_games", "exclude_headhunters", "include_adjacent"):
+        require(type(p[key]) is bool, f"画像 {key} 必须为布尔值")
+    require(type(p.get('exclude_unclear_employers', True)) is bool, 'exclude_unclear_employers 必须为布尔值')
+    require(isinstance(p.get('background', ''), str), 'background 必须为文本')
+    f = p["freshness"]
+    require(isinstance(f, dict) and {"published_months", "refreshed_months"} <= f.keys() and f.keys() <= {"published_months", "refreshed_months", "mode"}, "freshness 字段无效")
+    require(all(type(f[k]) is int and 0 <= f[k] <= 120 for k in ('published_months', 'refreshed_months')), "时间窗口须为 0–120 个自然月")
+    require(f.get('mode', 'any') in ('any', 'all'), '时间关系必须为 any/all')
+    s = p["salary"]
+    require(isinstance(s, dict) and s.keys() == {"currency", "min_lower_monthly", "min_upper_monthly", "allow_unknown"}, "salary 规则字段无效")
+    require(isinstance(s["currency"], str) and bool(s["currency"].strip()), "薪资规则缺币种")
+    require(number(s["min_lower_monthly"]) and number(s["min_upper_monthly"]), "薪资门槛应为非负有限数")
+    require(type(s["allow_unknown"]) is bool, "薪资未知策略无效")
+    b = p["budget"]
+    require(isinstance(b, dict) and b.keys() == {"queries", "enrichment_queries", "per_job_minutes"}, "budget 字段无效")
+    require(type(b["queries"]) is int and b["queries"] >= 0, "queries 预算须为非负整数")
+    require(type(b["enrichment_queries"]) is int and 0 <= b["enrichment_queries"] <= b["queries"], "补充预算不能超过总预算")
+    require(number(b["per_job_minutes"]) and b["per_job_minutes"] > 0, "单岗时间应大于零")

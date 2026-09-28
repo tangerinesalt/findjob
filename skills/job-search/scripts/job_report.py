@@ -5,21 +5,23 @@ from __future__ import annotations
 import argparse
 import calendar
 import copy
-import html
 import json
 import math
-import os
 from pathlib import Path
 import re
 import sys
-import tempfile
 import importlib.util
 from datetime import date
-from urllib.parse import quote, parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
-_profile_spec = importlib.util.spec_from_file_location('fingjob_profile_format', Path(__file__).with_name('profile_format.py'))
+_profile_spec = importlib.util.spec_from_file_location('fingjob_profile_format', Path(__file__).resolve().parents[3] / 'scripts/profile_data.py')
 profile_format = importlib.util.module_from_spec(_profile_spec)
 _profile_spec.loader.exec_module(profile_format)
+validate_profile = profile_format.validate_profile
+_store_spec = importlib.util.spec_from_file_location('fingjob_file_store', Path(__file__).resolve().parents[3] / 'scripts/file_store.py')
+file_store = importlib.util.module_from_spec(_store_spec)
+_store_spec.loader.exec_module(file_store)
+load, save = file_store.load, file_store.save
 _facts_spec = importlib.util.spec_from_file_location('fingjob_job_facts', Path(__file__).with_name('job_facts.py'))
 job_facts = importlib.util.module_from_spec(_facts_spec)
 _facts_spec.loader.exec_module(job_facts)
@@ -35,29 +37,6 @@ KINDS = {"published": "发布", "refreshed": "刷新", "job_time": "岗位时间
 def require(condition, message):
     if not condition:
         raise ValueError(message)
-
-
-def load(path):
-    return json.loads(Path(path).read_text(encoding="utf-8-sig"))
-
-
-def save(path, value, replace=True):
-    """Atomic replacement by the one owning process; init never overwrites."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    content = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, indent=2) + "\n"
-    if not replace:
-        with path.open("x", encoding="utf-8", newline="\n") as stream:
-            stream.write(content)
-        return
-    fd, temporary = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
-            stream.write(content)
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
 
 
 def iso(value):
@@ -100,36 +79,6 @@ def merge(base, overlay):
     for key, value in overlay.items():
         result[key] = merge(result[key], value) if isinstance(result.get(key), dict) and isinstance(value, dict) else copy.deepcopy(value)
     return result
-
-
-def validate_profile(p):
-    require(isinstance(p, dict), "profile 必须为对象")
-    required = {"schema_version", "name", "keywords", "locations", "exclude_games", "exclude_headhunters", "include_adjacent", "freshness", "salary", "budget", "preferences"}
-    optional = {"hard_requirements", "target_roles", "excluded_keywords", "excluded_locations", "employment_types", "work_arrangements", "background", "exclude_unclear_employers"}
-    require(required <= p.keys() and p.keys() <= required | optional, "画像字段缺失或未知")
-    require(type(p["schema_version"]) is int and p["schema_version"] == 1, "仅支持画像 schema_version=1")
-    require(isinstance(p["name"], str) and p["name"].strip(), "画像缺少 name")
-    for key in ("keywords", "locations", "preferences", "hard_requirements", "target_roles", "excluded_keywords", "excluded_locations", "employment_types", "work_arrangements"):
-        require(strings(p.get(key, [])), f"画像 {key} 必须为字符串数组")
-    require(bool(p["keywords"]), "画像必须给出目标岗位关键词")
-    for key in ("exclude_games", "exclude_headhunters", "include_adjacent"):
-        require(type(p[key]) is bool, f"画像 {key} 必须为布尔值")
-    require(type(p.get('exclude_unclear_employers', True)) is bool, 'exclude_unclear_employers 必须为布尔值')
-    require(isinstance(p.get('background', ''), str), 'background 必须为文本')
-    f = p["freshness"]
-    require(isinstance(f, dict) and {"published_months", "refreshed_months"} <= f.keys() and f.keys() <= {"published_months", "refreshed_months", "mode"}, "freshness 字段无效")
-    require(all(type(f[k]) is int and 0 <= f[k] <= 120 for k in ('published_months', 'refreshed_months')), "时间窗口须为 0–120 个自然月")
-    require(f.get('mode', 'any') in ('any', 'all'), '时间关系必须为 any/all')
-    s = p["salary"]
-    require(isinstance(s, dict) and s.keys() == {"currency", "min_lower_monthly", "min_upper_monthly", "allow_unknown"}, "salary 规则字段无效")
-    require(isinstance(s["currency"], str) and bool(s["currency"].strip()), "薪资规则缺币种")
-    require(number(s["min_lower_monthly"]) and number(s["min_upper_monthly"]), "薪资门槛应为非负有限数")
-    require(type(s["allow_unknown"]) is bool, "薪资未知策略无效")
-    b = p["budget"]
-    require(isinstance(b, dict) and b.keys() == {"queries", "enrichment_queries", "per_job_minutes"}, "budget 字段无效")
-    require(type(b["queries"]) is int and b["queries"] >= 0, "queries 预算须为非负整数")
-    require(type(b["enrichment_queries"]) is int and 0 <= b["enrichment_queries"] <= b["queries"], "补充预算不能超过总预算")
-    require(number(b["per_job_minutes"]) and b["per_job_minutes"] > 0, "单岗时间应大于零")
 
 
 def validate_run(run):
@@ -403,6 +352,7 @@ def main(argv=None):
     budget.add_argument("--count", type=int, required=True)
     verify = commands.add_parser("check", help="检查及筛选事实记录")
     verify.add_argument("--run", required=True)
+    verify.add_argument('--full', action='store_true', help='包含合并后的完整证据；默认仅输出判断')
     report = commands.add_parser("render", help="生成一份两部分 Markdown 报告")
     report.add_argument("--run", required=True)
     report.add_argument("--output", required=True)
@@ -431,7 +381,8 @@ def main(argv=None):
             return 0
         result = check(run)
         if args.command == "check" or result["errors"]:
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            display = result if getattr(args, 'full', False) else {k: v for k, v in result.items() if k != 'records'}
+            print(json.dumps(display, ensure_ascii=False, indent=2))
         if result["errors"]:
             return 1
         if args.command == "render":

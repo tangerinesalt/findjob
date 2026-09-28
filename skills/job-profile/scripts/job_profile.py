@@ -7,10 +7,13 @@ import importlib.util
 from pathlib import Path
 import sys
 
-_path = Path(__file__).resolve().parents[2] / 'job-search' / 'scripts' / 'job_report.py'
-_spec = importlib.util.spec_from_file_location('fingjob_job_report', _path)
-report = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(report)
+_shared = Path(__file__).resolve().parents[3] / 'scripts'
+_spec = importlib.util.spec_from_file_location('fingjob_profile_data', _shared / 'profile_data.py')
+profile_data = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(profile_data)
+_spec = importlib.util.spec_from_file_location('fingjob_file_store', _shared / 'file_store.py')
+file_store = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(file_store)
 
 
 def main(argv=None):
@@ -28,20 +31,20 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.command == 'draft':
-            profile = report.profile_format.defaults(args.role)
+            profile = profile_data.defaults(args.role)
             if args.name:
                 profile['name'] = args.name
-            report.validate_profile(profile)
-            report.save(args.output, profile, replace=False)
+            profile_data.validate_profile(profile)
+            file_store.save(args.output, profile, replace=False)
             print(f'Draft: {Path(args.output).resolve()}')
             return 0
-        profile = report.profile_format.load(args.input)
-        report.validate_profile(profile)
+        profile = profile_data.load(args.input)
+        profile_data.validate_profile(profile)
         if args.command == 'check':
             print(f'Valid profile: {profile["name"]}')
         else:
             workspace = Path(args.workspace) if args.workspace else Path.cwd()
-            print(f'Profile: {report.profile_format.save_new(profile, workspace)}')
+            print(f'Profile: {profile_data.save_new(profile, workspace)}')
         return 0
     except (OSError, ValueError, TypeError) as exc:
         print(f'Error: {exc}', file=sys.stderr)

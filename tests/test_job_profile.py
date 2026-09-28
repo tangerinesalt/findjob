@@ -4,6 +4,9 @@ import copy
 import importlib.util
 import io
 import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -17,6 +20,17 @@ fmt = report.profile_format
 
 
 class Profiles(unittest.TestCase):
+    def test_profile_cli_does_not_depend_on_search_report_modules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / 'skills/job-profile/scripts'
+            target.mkdir(parents=True)
+            shutil.copy2(ROOT / 'skills/job-profile/scripts/job_profile.py', target / 'job_profile.py')
+            shutil.copytree(ROOT / 'scripts', root / 'scripts', ignore=shutil.ignore_patterns('__pycache__'))
+            result = subprocess.run([sys.executable, '-B', '-X', 'utf8', str(target / 'job_profile.py'), 'draft', '--role', 'C++开发', '--output', str(root / 'draft.json')], capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((root / 'draft.json').is_file())
+
     def invoke(self, module, args):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return module.main(args)

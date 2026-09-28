@@ -12,4 +12,6 @@ python -X utf8 "<search-skill>/scripts/run_state.py" record --file "<账本>" --
 
 status 输出预算、方向、最近查询、最近 notes 及结果位置，不打印全部岗位与证据。恢复时先读摘要，再读待处理岗位的相关材料；不要反复读完整报告或插件源码。新事实、冲突、下一步及时写入，脚本采用原子替换，避免写入一半损坏账本。
 
+后续清单可用 `report_target.py inspect --task <task.json>` 只读条件与简表；指定 `--number 01 --field benefits --field work_time` 只看对应字段。省略 field 显示该岗位完整段落。出现冲突再扩读相关上下文，不需要每次输出整份清单。
+
 search 在搜索前仍用 budget 预留；follow-up 的 prepare 可传 `--queries N` 设置本轮预算，未传沿用 enrich 12 / refresh 60。实际调用与预留分别记，不重置原任务；已执行但尚未落盘的调用从可用工具记录恢复。

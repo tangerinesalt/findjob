@@ -19,6 +19,11 @@ report_format = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(report_format)
 
 
+_store_spec = importlib.util.spec_from_file_location('fingjob_file_store', Path(__file__).resolve().parents[3] / 'scripts/file_store.py')
+file_store = importlib.util.module_from_spec(_store_spec)
+_store_spec.loader.exec_module(file_store)
+write_json = file_store.save
+
 def read(path):
     return Path(path).read_text(encoding="utf-8-sig")
 
@@ -148,10 +153,6 @@ def resolve(workspace, report=None, context_report=None):
             "candidates": [str(p) for p in candidates]}
 
 
-def write_json(path, data):
-    Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
 def prepare(workspace, mode, as_of, report=None, context_report=None, queries=None):
     date.fromisoformat(as_of)
     if queries is not None and (type(queries) is not int or queries < 0):
@@ -233,6 +234,25 @@ def patch_report(task_path, patch_path):
     return summary
 
 
+def inspect_report(task_path, number=None, fields=None):
+    data = report_format.structure(read(Path(task_path).parent / 'working.md'))
+    if data is None:
+        return {'managed': False, 'note': '非标准清单请读取工作稿相关段落'}
+    lines, start, end, rows, sections = data
+    if number is None:
+        return {'conditions': '\n'.join(lines[:start]), 'rows': [row for _, row in rows.values()]}
+    if number not in sections:
+        raise ValueError('找不到该岗位详情编号')
+    a, b = sections[number]
+    if not fields:
+        return {'number': number, 'text': '\n'.join(lines[a:b])}
+    if any(field not in report_format.DETAILS for field in fields):
+        raise ValueError('field 使用 duties/requirements/benefits/work_time/overtime/insured/legal_risk')
+    labels = [report_format.DETAILS[field] for field in fields]
+    return {'number': number, 'row': rows[number][1], 'text': '\n'.join(
+        line for line in lines[a:b] if any(line.startswith('- **' + label + '**：') for label in labels))}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -253,6 +273,10 @@ def main(argv=None):
     command.add_argument('--patch', required=True)
     command = commands.add_parser('check', help='检查工作稿结构和主表/详情一致性')
     command.add_argument('--task', required=True)
+    command = commands.add_parser('inspect', help='只读简表或选定岗位/字段')
+    command.add_argument('--task', required=True)
+    command.add_argument('--number')
+    command.add_argument('--field', action='append')
     args = parser.parse_args(argv)
     try:
         if args.command == "resolve":
@@ -261,6 +285,8 @@ def main(argv=None):
             result = prepare(args.workspace, args.mode, args.as_of, args.report, args.context_report, args.queries)
         elif args.command == 'patch':
             result = patch_report(args.task, args.patch)
+        elif args.command == 'inspect':
+            result = inspect_report(args.task, args.number, args.field)
         elif args.command == 'check':
             result = report_format.check(read(Path(args.task).parent / 'working.md'))
             print(json.dumps(result, ensure_ascii=False, indent=2))
