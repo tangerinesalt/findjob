@@ -5,6 +5,7 @@ No network access, job parsing, or evidence verification is performed here.
 import argparse
 from datetime import date
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,10 @@ import re
 import sys
 import tempfile
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
+
+_spec = importlib.util.spec_from_file_location('fingjob_report_format', Path(__file__).with_name('report_format.py'))
+report_format = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(report_format)
 
 
 def read(path):
@@ -180,6 +185,9 @@ def publish(task_path, summary):
     working = task_path.parent / "working.md"
     if not is_report(working):
         raise ValueError("工作稿缺少岗位清单结构，不能交付。")
+    findings = report_format.check(read(working))
+    if findings['errors']:
+        raise ValueError('；'.join(findings['errors']))
     source = Path(task["source"])
     changed = not source.is_file() or hashlib.sha256(source.read_bytes()).hexdigest() != task["source_sha256"]
     label = {"enrich": "补充", "refresh": "复核"}[task["mode"]]
@@ -202,7 +210,25 @@ def publish(task_path, summary):
         raise ValueError("同名文件过多，无法分配输出名称。")
     task.update(status="complete", output=str(output), summary=summary.strip())
     write_json(task_path, task)
-    return {"output": str(output), "source_changed": changed}
+    return {"output": str(output), "source_changed": changed, 'warnings': findings['warnings']}
+
+
+def patch_report(task_path, patch_path):
+    task_path = Path(task_path).resolve()
+    task = json.loads(read(task_path))
+    if task['status'] == 'complete':
+        raise ValueError('已交付任务请另建任务')
+    patch = json.loads(read(patch_path))
+    if task['mode'] == 'enrich' and 'window' in patch:
+        raise ValueError('补充任务不滚动原时间窗口')
+    working = task_path.parent / 'working.md'
+    content, summary = report_format.apply(read(working), patch)
+    temporary = working.with_suffix('.tmp')
+    temporary.write_text(content, encoding='utf-8')
+    os.replace(temporary, working)
+    task.setdefault('patches', []).append({'path': str(Path(patch_path).resolve()), **summary})
+    write_json(task_path, task)
+    return summary
 
 
 def main(argv=None):
@@ -219,12 +245,23 @@ def main(argv=None):
     command = commands.add_parser("publish")
     command.add_argument("--task", required=True)
     command.add_argument("--summary", required=True)
+    command = commands.add_parser('patch', help='按岗位/字段局部更新标准报告')
+    command.add_argument('--task', required=True)
+    command.add_argument('--patch', required=True)
+    command = commands.add_parser('check', help='检查工作稿结构和主表/详情一致性')
+    command.add_argument('--task', required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "resolve":
             result = resolve(args.workspace, args.report, args.context_report)
         elif args.command == "prepare":
             result = prepare(args.workspace, args.mode, args.as_of, args.report, args.context_report)
+        elif args.command == 'patch':
+            result = patch_report(args.task, args.patch)
+        elif args.command == 'check':
+            result = report_format.check(read(Path(args.task).parent / 'working.md'))
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 2 if result['errors'] else 0
         else:
             result = publish(args.task, args.summary)
         print(json.dumps(result, ensure_ascii=False, indent=2))

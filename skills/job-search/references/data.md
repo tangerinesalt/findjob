@@ -82,6 +82,7 @@ init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`�
 - salary.period：month/year/day/hour/unknown；currency 为原始币种。min/max 为元数值或 null，months 为明确的年发薪月数或 null。面议/未披露用 period=unknown，min=max=null，原文写在 text。已知任一数值必须提供 salary 证据。
 - evidence 为上述判断依据。缺失不等于通过；筛选输出“待核实”。证据 note 用改写的短描述，不抄整段内容。
 - details 允许 duties、requirements、benefits、work_time、overtime、insured、legal_risk；每项为 text 与 sources URL 列表。未取得就省略，脚本会标未披露/未核实，不能填造假来源。
+- 详情可选 status 区分 verified/not_disclosed/unverified/blocked/conflict；未采集默认未核实，不等同已查未披露。scope/entity/year/observed_at 记录适用范围、法人、年报年份及访问日；详细格式及后续更新见 [updates.md](updates.md)，仅需局部更新时读取。
 - discussions 每项为 `{"text":"个人反馈摘要，未独立证实","url":"https://...","date":"2025-04-01或未披露","scope":"公司层面，非特定岗位"}`。
 - notes 放冲突/局限；主要岗位身份、日期、薪资有冲突未解决时，将相应判断保持 unknown，或不提供未经确认的数值。
 - 可选 `requisition_id`、`team` 保存已知招聘编号、团队，防止同公司同名同城不同机会误合并；`identity_key` 仅在已确认跨来源属于同一岗位时填写，不能凭岗位名猜测。

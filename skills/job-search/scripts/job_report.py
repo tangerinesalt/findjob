@@ -23,13 +23,12 @@ _profile_spec.loader.exec_module(profile_format)
 _facts_spec = importlib.util.spec_from_file_location('fingjob_job_facts', Path(__file__).with_name('job_facts.py'))
 job_facts = importlib.util.module_from_spec(_facts_spec)
 _facts_spec.loader.exec_module(job_facts)
+_format_spec = importlib.util.spec_from_file_location('fingjob_report_format', Path(__file__).with_name('report_format.py'))
+report_format = importlib.util.module_from_spec(_format_spec)
+_format_spec.loader.exec_module(report_format)
 
 
-DETAILS = {
-    "duties": "工作职责", "requirements": "具体要求", "benefits": "福利",
-    "work_time": "工作时间（每日起止/每周天数）", "overtime": "加班情况",
-    "insured": "社保人数（法人/年份）", "legal_risk": "法律风险",
-}
+DETAILS = report_format.DETAILS
 KINDS = {"published": "发布", "refreshed": "刷新", "job_time": "岗位时间"}
 
 
@@ -188,8 +187,7 @@ def validate_job(j):
     details = j.get("details", {})
     require(isinstance(details, dict) and details.keys() <= DETAILS.keys(), "details 有未知字段")
     for key, detail in details.items():
-        require(isinstance(detail, dict) and isinstance(detail.get("text"), str), f"{key} 缺 text")
-        require(isinstance(detail.get("sources"), list) and (not detail["text"].strip() or len(detail["sources"]) > 0) and all(url(x) for x in detail["sources"]), f"{key} 事实缺有效 sources")
+        report_format.validate_detail(detail)
     require(strings(j.get("notes", [])), "岗位 notes 须为字符串数组")
     require(isinstance(j.get("discussions", []), list), "discussions 须为数组")
     for item in j.get("discussions", []):
@@ -316,14 +314,11 @@ def check(run):
 
 
 def esc(value):
-    text = html.escape(str(value), quote=False)
-    for char in ("\\", "|", "*", "_", "[", "]", "`", "#"):
-        text = text.replace(char, "\\" + char)
-    return text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br>")
+    return report_format.esc(value)
 
 
 def link(address, label="来源"):
-    return f"[{esc(label)}]({quote(address, safe=':/?&=%#@+;,~!$*-._')})"
+    return report_format.link(address, label)
 
 
 def render(run, result):
@@ -333,7 +328,7 @@ def render(run, result):
     kept = result["kept"]
     company_count = len({norm(jobs[x["id"]]["company"]) for x in kept})
     adjacent = sum(jobs[x["id"]]["relevance"] == "adjacent" for x in kept)
-    out = [f"# 岗位报告：{esc(p['name'])}", "", f"检索基准日：{today}。本轮纳入 **{len(kept)} 条岗位、{company_count} 家单位**，其中相关方向 {adjacent} 条；不代表全网总量。", "",
+    out = [f"# 岗位报告：{esc(p['name'])}", "<!-- fingjob:report v2 -->", "", f"检索基准日：{today}。本轮纳入 **{len(kept)} 条岗位、{company_count} 家单位**，其中相关方向 {adjacent} 条；不代表全网总量。", "",
            "## 第一部分：岗位简表", "",
            f"时间：发布自 {back_months(today, p['freshness']['published_months'])} 起，{'且' if p['freshness'].get('mode', 'any') == 'all' else '或'}刷新自 {back_months(today, p['freshness']['refreshed_months'])} 起，均截至 {today}。",
            f"薪资：{esc(p['salary']['currency'])} 月薪下限 ≥ {p['salary']['min_lower_monthly']:g}，上限 ≥ {p['salary']['min_upper_monthly']:g}；允许未知：{'是' if p['salary']['allow_unknown'] else '否'}。",
@@ -342,7 +337,7 @@ def render(run, result):
            f"排除地点：{esc('、'.join(p.get('excluded_locations', [])) or '无')}；招聘类型：{esc('、'.join(p.get('employment_types', [])) or '不限')}；工作方式：{esc('、'.join(p.get('work_arrangements', [])) or '不限')}。",
            f"岗位排除关键词：{esc('、'.join(p.get('excluded_keywords', [])) or '无')}；排除雇主不明确：{'是' if p.get('exclude_unclear_employers', True) else '否'}。",
            f"排序偏好：{esc('；'.join(p.get('preferences', [])) or '无')}。默认按岗位日期倒序，同日按公司/岗位/地点/链接稳定排序；偏好未自动评分。", "",
-           "| 编号 | 公司 | 岗位 | 地点 | 薪资 | 学历/经验要求 | 刷新/招聘时间 | 招聘链接 |",
+            report_format.table_line(report_format.HEADERS),
            "|---|---|---|---|---|---|---|---|"]
     for i, item in enumerate(kept, 1):
         j, d = jobs[item["id"]], item["date"]
@@ -362,10 +357,7 @@ def render(run, result):
             out.append(f"- **截止日期**：{j['deadline']}。")
         for key, label in DETAILS.items():
             detail = j.get("details", {}).get(key)
-            default = "未核实" if key in ("insured", "legal_risk") else "未披露"
-            value = esc(detail["text"].rstrip().rstrip("。")) if detail and detail["text"].strip() else default
-            references = " ".join(link(x) for x in dict.fromkeys(detail["sources"])) if detail and detail["text"].strip() else ""
-            out.append(f"- **{label}**：{value}。{references}")
+            out.append(report_format.detail_line(key, detail))
         discussions = j.get("discussions", [])
         out.append("- **岗位讨论及链接**：" + ("未取得可核实的对应讨论。" if not discussions else ""))
         for discussion in discussions:
