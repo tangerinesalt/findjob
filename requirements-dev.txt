@@ -1,0 +1,3 @@
+# Test-only Markdown rendering and skill metadata validation.
+markdown-it-py>=3,<5
+PyYAML>=6,<7

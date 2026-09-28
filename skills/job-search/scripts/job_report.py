@@ -338,7 +338,7 @@ def render(run, result):
            f"岗位排除关键词：{esc('、'.join(p.get('excluded_keywords', [])) or '无')}；排除雇主不明确：{'是' if p.get('exclude_unclear_employers', True) else '否'}。",
            f"排序偏好：{esc('；'.join(p.get('preferences', [])) or '无')}。", "",
            "| 编号 | 公司 | 岗位 | 地点 | 薪资 | 学历/经验要求 | 刷新/招聘时间 | 招聘链接 |",
-           "|---|---|---|---|---|---|---|---|---|"]
+           "|---|---|---|---|---|---|---|---|"]
     for i, item in enumerate(kept, 1):
         j, d = jobs[item["id"]], item["date"]
         title = j["title"] + ("【相关方向】" if j["relevance"] == "adjacent" else "")

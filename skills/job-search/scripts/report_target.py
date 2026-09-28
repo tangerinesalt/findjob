@@ -6,10 +6,12 @@ import argparse
 from datetime import date
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import sys
 import tempfile
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 
 def read(path):
@@ -39,9 +41,11 @@ def is_report(path):
         if not fenced:
             lines.append(line)
     title = next((line for line in lines if re.match(r"^#\s+", line)), "")
-    if not re.search(r"岗位|招聘|职位", title):
+    if not re.search(r"岗位|招聘|职位|\bjobs?\b", title, re.I):
         return False
-    if re.search(r"采集对比|对比分析|比较分析|使用说明|操作指南|求职画像", title):
+    # Classify document purpose before any subtitle containing the target role.
+    purpose = re.split(r"[:：]", title, maxsplit=1)[0].strip()
+    if re.search(r"(?:分析|对比|比较|说明|指南|画像|测试报告)$", purpose):
         return False
     for i, line in enumerate(lines[:-1]):
         if not line.strip().startswith("|"):
@@ -54,6 +58,56 @@ def is_report(path):
         if company and role and location_salary and separator:
             return True
     return False
+
+
+def rebase_links(content, source_dir, destination_dir):
+    """Rebase local Markdown links; preserve URLs, anchors and code examples."""
+    if Path(source_dir).resolve() == Path(destination_dir).resolve():
+        return content
+
+    def address(value):
+        wrapped = value.startswith('<') and value.endswith('>')
+        raw = value[1:-1] if wrapped else value
+        parts = urlsplit(raw)
+        if parts.scheme or parts.netloc or not parts.path or Path(unquote(parts.path)).is_absolute():
+            return value
+        target = (Path(source_dir) / unquote(parts.path)).resolve()
+        try:
+            rebased = Path(os.path.relpath(target, destination_dir)).as_posix()
+        except ValueError:  # Different Windows drives: use an absolute Markdown path.
+            rebased = target.as_posix()
+        result = urlunsplit(('', '', quote(rebased, safe='/:~!$&\'*,;=@-._'), parts.query, parts.fragment))
+        return '<' + result + '>' if wrapped else result
+
+    result, fence = [], None
+    for line in content.splitlines(keepends=True):
+        stripped = line.lstrip()
+        if stripped.startswith(('```', '~~~')):
+            if fence is None:
+                fence = stripped[:3]
+            elif stripped.startswith(fence):
+                fence = None
+            result.append(line)
+            continue
+        if fence:
+            result.append(line)
+            continue
+        # Leave inline code intact. Support inline/image links and reference definitions.
+        pieces = re.split(r'(`+[^`]*`+)', line)
+        for i in range(0, len(pieces), 2):
+            pieces[i] = re.sub(r'(\]\()(<[^>\n]+>|(?:[^\s()\\]|\\.|\([^()]*\))+)',
+                               lambda m: m[1] + address(m[2]), pieces[i])
+            pieces[i] = re.sub(r'^(\s{0,3}\[[^\]]+\]:\s*)(<[^>\n]+>|\S+)',
+                               lambda m: m[1] + address(m[2]), pieces[i])
+        result.append(''.join(pieces))
+    return ''.join(result)
+
+
+def output_name(stem, ending):
+    # Reserve space for suffix/extension on both UTF-8 and Windows filesystems.
+    while len((stem + ending).encode('utf-8')) > 240 or len((stem + ending).encode('utf-16-le')) // 2 > 240:
+        stem = stem[:-1]
+    return stem.rstrip(' .') + ending
 
 
 def local_path(value, workspace):
@@ -129,15 +183,15 @@ def publish(task_path, summary):
     source = Path(task["source"])
     changed = not source.is_file() or hashlib.sha256(source.read_bytes()).hexdigest() != task["source_sha256"]
     label = {"enrich": "补充", "refresh": "复核"}[task["mode"]]
-    stem = f"{source.stem}_{label}_{task['operation_date'].replace('-', '')}"
+    ending = f"_{label}_{task['operation_date'].replace('-', '')}"
     # Publish to the active workspace, including when an explicit source is elsewhere.
     workspace = Path(task["workspace"])
-    content = read(working).rstrip() + f"\n\n## 本轮{label}记录\n\n处理日期：{task['operation_date']}（不是岗位发布日期或刷新日期）。\n\n{summary.strip()}\n"
+    content = rebase_links(read(working), source.parent, workspace).rstrip() + f"\n\n## 本轮{label}记录\n\n处理日期：{task['operation_date']}（不是岗位发布日期或刷新日期）。\n\n{summary.strip()}\n"
     if changed:
         content += "\n原清单在处理期间发生变化或已移走；本结果基于任务开始时的快照。\n"
     for index in range(1, 10000):
         suffix = "" if index == 1 else f"_{index}"
-        output = workspace / f"{stem}{suffix}.md"
+        output = workspace / output_name(source.stem, f"{ending}{suffix}.md")
         try:
             with output.open("x", encoding="utf-8", newline="\n") as handle:
                 handle.write(content)

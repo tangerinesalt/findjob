@@ -64,6 +64,36 @@ class Targets(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.resolve(self.root, "没有此文件.md", "新清单.md")
 
+    def test_analysis_with_copied_table_is_not_latest(self):
+        self.put('差异.md', REPORT.replace('# 岗位报告：Unity非游戏开发', '# Unity岗位清单差异分析'), 100)
+        self.assertEqual(module.resolve(self.root)['report'], str(self.new.resolve()))
+        self.assertTrue(module.is_report(self.put('数据分析.md', REPORT.replace('Unity非游戏开发', '数据分析'))))
+
+    def test_external_links_keep_targets_and_code(self):
+        external = Path(self.temp.name) / 'external'
+        external.mkdir()
+        (external / '画像.md').write_text('profile', encoding='utf-8')
+        source = external / '清单.md'
+        content = REPORT + '\n[画像](画像.md#目标)\n[引用][p]\n[p]: <画像.md> "说明"\n`[示例](画像.md)`\n[锚点](#本节)\n'
+        source.write_text(content, encoding='utf-8')
+        task = module.prepare(self.root, 'enrich', '2026-09-28', report=str(source))
+        output = module.publish(task['task'], '补充')['output']
+        text = module.read(output)
+        self.assertIn('../external/%E7%94%BB%E5%83%8F.md#目标', text)
+        self.assertIn('[p]: <../external/%E7%94%BB%E5%83%8F.md>', text)
+        self.assertIn('`[示例](画像.md)`', text)
+        self.assertIn('[锚点](#本节)', text)
+
+    def test_long_input_name_gets_safe_unique_output(self):
+        path = self.put('a' * 242 + '.md', REPORT)
+        outputs = []
+        for _ in range(2):
+            task = module.prepare(self.root, 'enrich', '2026-09-28', report=str(path))
+            outputs.append(Path(module.publish(task['task'], '补充')['output']))
+        self.assertNotEqual(*outputs)
+        self.assertTrue(all(len(p.name.encode('utf-8')) <= 240 and p.is_file() for p in outputs))
+        self.assertEqual(module.read(path), REPORT)
+
     def test_missing_context_falls_back_with_notice(self):
         result = module.resolve(self.root, context_report="丢失.md")
         self.assertEqual(result["report"], str(self.new.resolve()))
