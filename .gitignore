@@ -1,0 +1,13 @@
+# Local research reports and personal profiles remain in the workspace.
+/*.md
+!/README.md
+/.scratch/
+
+# Generated files and local credentials.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+.env.*
+!.env.example

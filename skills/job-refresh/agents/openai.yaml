@@ -1,0 +1,4 @@
+interface:
+  display_name: "岗位清单复核"
+  short_description: "按当前日期复核指定或最新清单的招聘状态、薪资与筛选条件并列出变化"
+  default_prompt: "使用 $job-refresh 复核当前对话最近完成的岗位清单；没有时使用当前工作空间最新清单，另存结果并说明变化。"

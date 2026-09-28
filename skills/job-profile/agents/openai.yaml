@@ -1,0 +1,4 @@
+interface:
+  display_name: "求职画像"
+  short_description: "从求职需求或简历整理筛选条件，在工作空间保存可编辑的 Markdown 画像供岗位搜索使用"
+  default_prompt: "使用 $job-profile，根据我的求职需求或简历建立画像，确认条件后在当前工作空间保存 Markdown 文件。"

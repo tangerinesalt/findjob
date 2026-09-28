@@ -1,0 +1,4 @@
+interface:
+  display_name: "岗位资料补充"
+  short_description: "为指定或最新岗位清单补充职责、福利、作息与企业信息，并保留来源"
+  default_prompt: "使用 $job-enrich 补充当前对话最近完成的岗位清单；没有时使用当前工作空间最新清单，另存结果。"

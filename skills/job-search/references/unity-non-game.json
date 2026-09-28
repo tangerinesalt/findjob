@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "name": "Unity 非游戏岗位",
+  "keywords": ["Unity", "Unity3D", "U3D", "VR", "数字孪生"],
+  "locations": [],
+  "exclude_games": true,
+  "exclude_headhunters": true,
+  "include_adjacent": false,
+  "freshness": {"published_months": 2, "refreshed_months": 1},
+  "salary": {"currency": "CNY", "min_lower_monthly": 6000, "min_upper_monthly": 9000, "allow_unknown": true},
+  "budget": {"queries": 60, "enrichment_queries": 12, "per_job_minutes": 3},
+  "preferences": []
+}

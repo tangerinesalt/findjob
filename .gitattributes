@@ -1,0 +1,2 @@
+# Preserve the installed baseline's original line endings on checkout.
+* -text
