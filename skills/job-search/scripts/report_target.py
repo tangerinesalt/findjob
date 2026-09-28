@@ -152,8 +152,10 @@ def write_json(path, data):
     Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def prepare(workspace, mode, as_of, report=None, context_report=None):
+def prepare(workspace, mode, as_of, report=None, context_report=None, queries=None):
     date.fromisoformat(as_of)
+    if queries is not None and (type(queries) is not int or queries < 0):
+        raise ValueError('queries 必须为非负整数')
     if mode not in {"enrich", "refresh"}:
         raise ValueError("mode 必须是 enrich 或 refresh")
     workspace = Path(workspace).resolve()
@@ -169,7 +171,7 @@ def prepare(workspace, mode, as_of, report=None, context_report=None):
                 source=str(source), source_sha256=hashlib.sha256(raw).hexdigest(),
                 selected_by=selected["selected_by"], warnings=selected["warnings"],
                 status="draft", output=None, searches=[], notes=[],
-                budget={"queries": 12 if mode == "enrich" else 60, "per_job_minutes": 3})
+                budget={"queries": queries if queries is not None else 12 if mode == "enrich" else 60, "per_job_minutes": 3})
     write_json(task_dir / "task.json", task)
     return {**selected, "task": str(task_dir / "task.json"), "working": str(task_dir / "working.md"),
             "snapshot": str(task_dir / "source.md")}
@@ -242,6 +244,7 @@ def main(argv=None):
         if name == "prepare":
             command.add_argument("--mode", choices=("enrich", "refresh"), required=True)
             command.add_argument("--as-of", required=True)
+            command.add_argument('--queries', type=int)
     command = commands.add_parser("publish")
     command.add_argument("--task", required=True)
     command.add_argument("--summary", required=True)
@@ -255,7 +258,7 @@ def main(argv=None):
         if args.command == "resolve":
             result = resolve(args.workspace, args.report, args.context_report)
         elif args.command == "prepare":
-            result = prepare(args.workspace, args.mode, args.as_of, args.report, args.context_report)
+            result = prepare(args.workspace, args.mode, args.as_of, args.report, args.context_report, args.queries)
         elif args.command == 'patch':
             result = patch_report(args.task, args.patch)
         elif args.command == 'check':

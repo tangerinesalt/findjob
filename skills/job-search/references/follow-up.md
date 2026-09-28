@@ -24,6 +24,8 @@ python -X utf8 "<search-skill>/scripts/report_target.py" prepare --mode refresh 
 
 默认 query 上限：enrich 12 次，refresh 60 次；均为建议的本轮总预算，用户本次要求优先，不必花完。打开已有链接不计 query。执行前在 task.json 的 notes 简记本批计划，执行后逐条加入 searches：`query/source/outcome/note`，区分 success / no_matches / blocked。已有运行的预算不重置冒充原任务继续；这两个入口各自是新的补充/复核任务。单岗约 3 分钟作为软参考，失败后换一次公开渠道仍无结果就标缺口并继续。每批不超过 5 岗保存工作稿和下一步。无网页能力时可整理历史资料，但明确未进行在线补充/复核。
 
+prepare 可传 `--queries N` 直接采用用户本轮预算。页面访问另记 accesses，便于比较实际成本。续接可先用 [进度摘要](progress.md) 的 status 命令，再读相关岗位；不必重读整份历史。
+
 查询直接传给宿主工具。站点限定用半角 `site:域名` 或工具 domains 参数。中文文件用 UTF-8；PowerShell 读取指定 `-Encoding UTF8`，不要通过默认编码管道向 Python 传中文代码。
 
 如上下文已有明确关联的 run.json，可复制到本任务目录作辅助，再按 [data.md](data.md) 和 [evidence.md](evidence.md) 使用 check；不要只凭 run.json 修改时间推断与清单的关联。清单的手工新增字段仍要保留。刷新后使用新 as_of，旧证据只作历史线索；不能将旧 check 的 kept 直接视为本轮已核实。无需强制重建缺失的 run.json，代理也可按同一规则逐岗检查并更新 Markdown。
