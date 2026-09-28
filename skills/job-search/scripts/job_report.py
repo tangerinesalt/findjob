@@ -20,6 +20,9 @@ from urllib.parse import quote, parse_qsl, urlencode, urlsplit, urlunsplit
 _profile_spec = importlib.util.spec_from_file_location('fingjob_profile_format', Path(__file__).with_name('profile_format.py'))
 profile_format = importlib.util.module_from_spec(_profile_spec)
 _profile_spec.loader.exec_module(profile_format)
+_facts_spec = importlib.util.spec_from_file_location('fingjob_job_facts', Path(__file__).with_name('job_facts.py'))
+job_facts = importlib.util.module_from_spec(_facts_spec)
+_facts_spec.loader.exec_module(job_facts)
 
 
 DETAILS = {
@@ -155,6 +158,8 @@ def validate_job(j):
         require(isinstance(j.get(key), str) and j[key].strip(), f"岗位缺 {key}")
     for key in ("education", "experience"):
         require(isinstance(j.get(key, ""), str), f"{key} 必须为文本")
+    for key in ('identity_key', 'requisition_id', 'team'):
+        require(isinstance(j.get(key, ''), str), f'{key} 必须为文本')
     require(url(j.get("job_url")), "岗位缺有效 HTTP(S) 直接链接")
     for key, allowed in {
         "status": {"open", "unknown", "closed"},
@@ -262,19 +267,25 @@ def evaluate(j, p, today):
             notes.append("薪资范围未完整披露，仅检查已知边界")
     if j["status"] == "unknown":
         notes.append("当前开放状态未独立确认")
-    chosen = max(current, key=lambda d: d["value"]) if current else None
-    state = "excluded" if rejected else "pending" if pending else "kept"
+    chosen = max(current, key=lambda d: (d['value'], d['kind'], d['url'], d['note'])) if current else None
+    conflicts = j.get('merge_conflicts', [])
+    core_conflicts = [c for c in conflicts if c['field'] not in ('education', 'experience')]
+    for conflict in conflicts:
+        notes.append('来源冲突 ' + conflict['field'] + '：' + '；'.join(str(v['value']) + ' ' + v['url'] for v in conflict['values']))
+    if core_conflicts:
+        pending = ['重复来源的核心字段冲突，需按证据解决：' + '、'.join(c['field'] for c in core_conflicts)] + pending
+    state = "pending" if core_conflicts else "excluded" if rejected else "pending" if pending else "kept"
+    if core_conflicts:
+        rejected = []
     return {"id": j["id"], "state": state, "reasons": rejected or pending, "date": chosen, "notes": list(dict.fromkeys(notes))}
 
 
 def canonical(value):
-    parts = urlsplit(value)
-    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if not k.lower().startswith("utm_")]
-    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), urlencode(query), ""))
+    return job_facts.canonical(value)
 
 
 def norm(value):
-    return re.sub(r"\s+", "", value).casefold().replace("（", "(").replace("）", ")")
+    return job_facts.norm(value)
 
 
 def check(run):
@@ -284,30 +295,23 @@ def check(run):
     except (ValueError, TypeError) as exc:
         result["errors"].append(str(exc))
         return result
-    ids, candidates = set(), []
+    ids, valid = set(), []
     for index, job in enumerate(run["jobs"]):
         try:
             validate_job(job)
             require(job["id"] not in ids, "id 重复；合并证据或使用不同来源ID")
             ids.add(job["id"])
-            item = evaluate(job, run["profile"], iso(run["as_of"]))
-            if item["state"] == "kept":
-                candidates.append((job, item))
-            else:
-                result[item["state"]].append(item)
+            valid.append(job)
         except (ValueError, TypeError) as exc:
             result["errors"].append(f"jobs[{index}]: {exc}")
-    candidates.sort(key=lambda pair: (pair[1]["date"]["value"], len(pair[0].get("details", {}))), reverse=True)
-    urls, identities = {}, {}
-    for job, item in candidates:
-        key = tuple(norm(job[k]) for k in ("company", "title", "location"))
-        address = canonical(job["job_url"])
-        previous = urls.get(address) or identities.get(key)
-        if previous:
-            result["duplicates"].append({"id": job["id"], "kept_id": previous, "reasons": ["相同岗位链接或雇主/岗位/地点"]})
-        else:
-            urls[address] = identities[key] = job["id"]
-            result["kept"].append(item)
+    records, result['duplicates'] = job_facts.consolidate(valid)
+    result['records'] = records
+    for job in records:
+        item = evaluate(job, run['profile'], iso(run['as_of']))
+        result[item['state']].append(item)
+    identities = {j['id']: tuple(norm(j[k]) for k in ('company', 'title', 'location')) + (canonical(j['job_url']), j['id']) for j in records}
+    for state in ('kept', 'excluded', 'pending'):
+        result[state].sort(key=lambda i: (-(date.fromisoformat(i['date']['value']).toordinal() if i['date'] else 0), identities[i['id']]))
     return result
 
 
@@ -325,6 +329,7 @@ def link(address, label="来源"):
 def render(run, result):
     p, today = run["profile"], iso(run["as_of"])
     jobs = {j["id"]: j for j in run["jobs"]}
+    jobs.update({j['id']: j for j in result.get('records', [])})
     kept = result["kept"]
     company_count = len({norm(jobs[x["id"]]["company"]) for x in kept})
     adjacent = sum(jobs[x["id"]]["relevance"] == "adjacent" for x in kept)
@@ -336,7 +341,7 @@ def render(run, result):
            f"其他硬条件：{esc('；'.join(p.get('hard_requirements', [])) or '无')}。", "",
            f"排除地点：{esc('、'.join(p.get('excluded_locations', [])) or '无')}；招聘类型：{esc('、'.join(p.get('employment_types', [])) or '不限')}；工作方式：{esc('、'.join(p.get('work_arrangements', [])) or '不限')}。",
            f"岗位排除关键词：{esc('、'.join(p.get('excluded_keywords', [])) or '无')}；排除雇主不明确：{'是' if p.get('exclude_unclear_employers', True) else '否'}。",
-           f"排序偏好：{esc('；'.join(p.get('preferences', [])) or '无')}。", "",
+           f"排序偏好：{esc('；'.join(p.get('preferences', [])) or '无')}。默认按岗位日期倒序，同日按公司/岗位/地点/链接稳定排序；偏好未自动评分。", "",
            "| 编号 | 公司 | 岗位 | 地点 | 薪资 | 学历/经验要求 | 刷新/招聘时间 | 招聘链接 |",
            "|---|---|---|---|---|---|---|---|"]
     for i, item in enumerate(kept, 1):
@@ -376,6 +381,8 @@ def render(run, result):
         for item in result[state]:
             j = jobs[item["id"]]
             out.append(f"- {label}：{esc(j['company'])} / {esc(j['title'])}：{esc('；'.join(item['reasons']))}。{link(j['job_url'], '职位')}")
+            for conflict in j.get('merge_conflicts', []):
+                out.append('  - ' + esc(conflict['field']) + ' 来源冲突：' + '；'.join(esc(v['value']) + ' ' + link(v['url']) for v in conflict['values']))
     out += ["", "### 检索覆盖与限制", "", f"实际搜索 {len(run['searches'])} 个 query，预算已预留 {run['reserved_queries']} / {p['budget']['queries']}；打开详情页不计搜索 query。预留额度不等于实际调用量。"]
     sources = {}
     for query in run["searches"]:

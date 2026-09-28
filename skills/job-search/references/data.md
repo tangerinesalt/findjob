@@ -84,5 +84,7 @@ init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`�
 - details 允许 duties、requirements、benefits、work_time、overtime、insured、legal_risk；每项为 text 与 sources URL 列表。未取得就省略，脚本会标未披露/未核实，不能填造假来源。
 - discussions 每项为 `{"text":"个人反馈摘要，未独立证实","url":"https://...","date":"2025-04-01或未披露","scope":"公司层面，非特定岗位"}`。
 - notes 放冲突/局限；主要岗位身份、日期、薪资有冲突未解决时，将相应判断保持 unknown，或不提供未经确认的数值。
+- 可选 `requisition_id`、`team` 保存已知招聘编号、团队，防止同公司同名同城不同机会误合并；`identity_key` 仅在已确认跨来源属于同一岗位时填写，不能凭岗位名猜测。
+- `check` 先稳定合并重复记录的互补证据，再筛选；不会改写原始 jobs。核心值冲突列待核实，保留各来源，代理按实际证据解决后再更新原记录。输出默认按日期倒序，同日按公司/岗位/地点/链接稳定排序；画像偏好展示但不自动评分。
 
 `check` 返回 kept/excluded/pending/duplicates 和 errors。结构错误返回非零退出码；被正常筛掉不是执行错误。`render` 只将 kept 写入简表和详情，末尾提供未纳入原因与来源访问情况。程序不能验证人写的 evidence 是否真实，仍需原页核实。
