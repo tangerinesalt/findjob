@@ -32,10 +32,11 @@ class Updates(unittest.TestCase):
         self.assertIn('2026-07-28', updated)
 
     def test_basic_salary_is_synchronized(self):
-        updated, _ = fmt.apply(self.source(), {'jobs': [{'number': '01', 'basic': {'salary': '7–10K/月'}, 'reason': '本轮正文薪资', 'sources': ['https://example.org/jobs/1'], 'checked_at': '2026-09-28'}]})
+        updated, _ = fmt.apply(self.source(), {'jobs': [{'number': '01', 'basic': {'salary': '7–10K/月'}, 'reason': '本轮正文薪资。', 'sources': ['https://example.org/jobs/1'], 'checked_at': '2026-09-28'}]})
         self.assertEqual(fmt.check(updated)['errors'], [])
         self.assertIn('- **基本信息**：Shanghai；7–10K/月', updated)
         self.assertIn('| Shanghai | 7–10K/月 |', updated)
+        self.assertNotIn('。。', updated)
 
     def test_date_change_requires_own_evidence(self):
         patch = {'jobs': [{'number': '01', 'basic': {'date': '2026-09-27（刷新）'}, 'reason': '更新', 'sources': ['https://example.org/jobs/1'], 'checked_at': '2026-09-28'}]}
@@ -46,6 +47,7 @@ class Updates(unittest.TestCase):
         self.assertIn('未核实', fmt.detail_line('work_time'))
         self.assertIn('来源受阻', fmt.detail_line('work_time', {'text': '', 'sources': [], 'status': 'blocked'}))
         self.assertIn('已查未披露', fmt.detail_line('work_time', {'text': '', 'sources': [], 'status': 'not_disclosed'}))
+        self.assertIn('未核实', fmt.detail_line('insured', {'text': '未取得对应法人年度数据', 'sources': [], 'status': 'unverified'}))
 
     def test_publication_rejects_inconsistent_standard_report(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -81,3 +83,15 @@ class Updates(unittest.TestCase):
         text = report.render(run, report.check(run))
         self.assertIn('班车。（本岗）[来源](https://example.org/jobs/1)', text)
         self.assertIn('培训。（公司）[来源](https://example.org/other)', text)
+
+    def test_unknown_explanation_survives_search_consolidation_and_render(self):
+        record = job()
+        record['details']['insured'] = {'text': '未取得对应法人年度数据', 'sources': [], 'status': 'unverified'}
+        record['dates'][0]['note'] += '。'
+        record['evidence']['relevance']['note'] += '。'
+        run = run_record(record)
+        result = report.check(run)
+        self.assertEqual(result['errors'], [])
+        text = report.render(run, result)
+        self.assertIn('未取得对应法人年度数据', text)
+        self.assertNotIn('。。', text)

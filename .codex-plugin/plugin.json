@@ -1,6 +1,6 @@
 {
   "name": "fingjob",
-  "version": "0.1.0+codex.20260924023528",
+  "version": "0.1.0+codex.20260929040300",
   "description": "Build job profiles, search jobs, enrich existing reports, and refresh job evidence with sourced Markdown results.",
   "author": {
     "name": "Local developer"

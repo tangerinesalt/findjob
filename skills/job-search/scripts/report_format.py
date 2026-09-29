@@ -26,6 +26,10 @@ def link(address, label='来源'):
     return f'[{esc(label)}]({quote(address, safe=":/?&=%#@+;,~!$*-._")})'
 
 
+def sentence(value):
+    return esc(str(value).rstrip().rstrip('。')) + '。'
+
+
 def valid_url(value):
     return isinstance(value, str) and not any(c.isspace() for c in value) and urlsplit(value).scheme in ('http', 'https') and bool(urlsplit(value).netloc)
 
@@ -38,7 +42,7 @@ def validate_detail(detail):
     sources = detail.get('sources')
     if not isinstance(sources, list) or not all(valid_url(u) for u in sources):
         raise ValueError('详情 sources 无效')
-    if detail['text'].strip() and not sources:
+    if detail['text'].strip() and not sources and detail.get('status', 'verified') not in ('unverified', 'blocked', 'not_disclosed'):
         raise ValueError('非空详情必须保留来源')
     for field in ('scope', 'entity', 'year', 'observed_at'):
         if field in detail and not isinstance(detail[field], str):
@@ -64,7 +68,7 @@ def detail_line(key, detail=None):
         metadata = [observation[k] for k in ('scope', 'entity', 'year', 'observed_at') if observation.get(k)]
         text = observation['text'].rstrip().rstrip('。')
         value = (esc(text) + '。') if text else ''
-        if status != 'verified' or not text:
+        if (status != 'verified' or not text) and STATES[status] not in text:
             value += STATES[status] + '。'
         if metadata:
             value += '（' + esc('；'.join(metadata)) + '）'
@@ -191,12 +195,12 @@ def apply(content, patch):
             if not update.get('reason') or not update.get('sources') or not all(valid_url(u) for u in update['sources']):
                 raise ValueError('基本信息或筛选变化需 reason 和 sources')
             date.fromisoformat(update['checked_at'])
-            block = replace_field(block, '本轮核实', '- **本轮核实**：' + esc(update['checked_at'] + '；' + update['reason']) + '。' + ' '.join(link(u) for u in update['sources']))
+            block = replace_field(block, '本轮核实', '- **本轮核实**：' + sentence(update['checked_at'] + '；' + update['reason']) + ' '.join(link(u) for u in update['sources']))
         if 'date' in basic:
             proof = update.get('date_evidence', {})
             if not valid_url(proof.get('url')) or not proof.get('note'):
                 raise ValueError('岗位日期变更需 date_evidence；访问日期不是岗位日期')
-            block = replace_field(block, '日期依据', '- **日期依据**：' + esc(proof['note']) + '。' + link(proof['url']))
+            block = replace_field(block, '日期依据', '- **日期依据**：' + sentence(proof['note']) + link(proof['url']))
         if basic:
             block = replace_field(block, '基本信息', basic_line(row))
             block = re.sub(r'^### .*', lambda m: f'### {number}｜{row[1]} — {row[2].replace("【相关方向】", "")}', block, count=1)

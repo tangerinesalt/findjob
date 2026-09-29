@@ -63,3 +63,20 @@ class Facts(unittest.TestCase):
         b['title'] = 'Senior developer'
         runs = [run_record(a, b), run_record(b, a)]
         self.assertEqual(*(module.render(r, module.check(r)) for r in runs))
+
+    def test_unknown_record_evidence_cannot_prove_other_records_claim(self):
+        a, b = self.copies()
+        a['profile_match'] = 'unknown'
+        b['evidence'].pop('profile_match')
+        result = module.check(run_record(a, b))
+        self.assertFalse(result['kept'])
+        self.assertEqual(len(result['pending']), 1)
+
+    def test_pending_summary_retains_adjacent_label_and_conflict_context(self):
+        record = job()
+        record.update(relevance='adjacent', dates=[], notes=['摘要日期与正文不一致，未取较新值'])
+        run = run_record(record)
+        run['profile']['include_adjacent'] = True
+        text = module.render(run, module.check(run))
+        self.assertIn('【相关方向】', text)
+        self.assertIn('摘要日期与正文不一致', text)

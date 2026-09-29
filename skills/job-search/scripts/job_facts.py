@@ -60,8 +60,9 @@ def consolidate(records):
                 candidates.sort(key=lambda p: (not bool(p[0].get('evidence', {}).get(field, {}).get('note')), canonical(p[0]['job_url']), p[0]['id']))
                 result[field] = candidates[0][1]
                 evidence = candidates[0][0].get('evidence', {}).get(field)
+                result.setdefault('evidence', {}).pop(field, None)
                 if evidence:
-                    result.setdefault('evidence', {})[field] = copy.deepcopy(evidence)
+                    result['evidence'][field] = copy.deepcopy(evidence)
                 conflict(field, candidates)
         for field in ('requisition_id', 'team', 'identity_key'):
             values = sorted({j[field] for j in group if j.get(field)})
@@ -70,7 +71,7 @@ def consolidate(records):
         salaries = [(j, j['salary']) for j in group if any(j['salary'].get(k) is not None for k in ('min', 'max'))]
         if salaries:
             # Select a complete observation, never synthesize an interval from two offers.
-            salaries.sort(key=lambda p: (-sum(p[1].get(k) is not None for k in ('min', 'max')), canonical(p[0]['job_url']), p[0]['id']))
+            salaries.sort(key=lambda p: (-sum(p[1].get(k) is not None for k in ('min', 'max')), not bool(p[0].get('evidence', {}).get('salary', {}).get('note')), canonical(p[0]['job_url']), p[0]['id']))
             result['salary'] = copy.deepcopy(salaries[0][1])
             result.setdefault('evidence', {})['salary'] = copy.deepcopy(salaries[0][0].get('evidence', {}).get('salary', {}))
             comparable = [(j, {k: s.get(k) for k in ('currency', 'period', 'min', 'max', 'months')}) for j, s in salaries]
@@ -86,6 +87,7 @@ def consolidate(records):
                 'text': '；'.join(dict.fromkeys(o['text'] for o in observations if o['text'].strip())),
                 'sources': sorted({u for o in observations for u in o['sources']}),
                 'observations': observations,
+                'status': 'verified' if any(o.get('status', 'verified') == 'verified' and o['text'].strip() for o in observations) else 'unverified',
             }
         result['merge_conflicts'] = unique(result['merge_conflicts'])
         result['source_records'] = unique({'id': j['id'], 'url': j['job_url']} for j in group)

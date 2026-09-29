@@ -301,7 +301,7 @@ def render(run, result):
         out += ["", f"### {i:02d}｜{esc(j['company'])} — {esc(j['title'])}", "",
                 f"- **基本信息**：{esc(j['location'])}；{esc(j['salary']['text'])}；{esc(j.get('education') or '未披露')} / {esc(j.get('experience') or '未披露')}；{d['value']}（{KINDS[d['kind']]}）。",
                 f"- **招聘链接**：{link(j['job_url'], '职位详情')}。",
-                f"- **日期依据**：{esc(d['note'])}。{link(d['url'])}"]
+                f"- **日期依据**：{report_format.sentence(d['note'])}{link(d['url'])}"]
         if j.get("deadline"):
             out.append(f"- **截止日期**：{j['deadline']}。")
         for key, label in DETAILS.items():
@@ -314,14 +314,17 @@ def render(run, result):
         for key, label in (("relevance", "方向依据"), ("games", "业务依据"), ("recruiter", "招聘主体"), ("profile_match", "画像匹配"), ("salary", "薪资依据")):
             evidence = j.get("evidence", {}).get(key)
             if proof(evidence):
-                out.append(f"- **{label}**：{esc(evidence['note'])}。{link(evidence['url'])}")
+                out.append(f"- **{label}**：{report_format.sentence(evidence['note'])}{link(evidence['url'])}")
         if item["notes"]:
             out.append("- **缺口/口径**：" + "；".join(esc(x) for x in item["notes"]) + "。")
     out += ["", "### 未纳入与去重", "", f"剔除 {len(result['excluded'])} 条；待核实 {len(result['pending'])} 条；重复 {len(result['duplicates'])} 条。以下不计入主表。"]
     for state, label in (("excluded", "剔除"), ("pending", "待核实"), ("duplicates", "重复")):
         for item in result[state]:
             j = jobs[item["id"]]
-            out.append(f"- {label}：{esc(j['company'])} / {esc(j['title'])}：{esc('；'.join(item['reasons']))}。{link(j['job_url'], '职位')}")
+            title = j['title'] + ('【相关方向】' if j['relevance'] == 'adjacent' else '')
+            out.append(f"- {label}：{esc(j['company'])} / {esc(title)}：{esc('；'.join(item['reasons']))}。{link(j['job_url'], '职位')}")
+            if state == 'pending' and j.get('notes'):
+                out.append('  - 缺口/口径：' + '；'.join(esc(note) for note in j['notes']))
             for conflict in j.get('merge_conflicts', []):
                 out.append('  - ' + esc(conflict['field']) + ' 来源冲突：' + '；'.join(esc(v['value']) + ' ' + link(v['url']) for v in conflict['values']))
     out += ["", "### 检索覆盖与限制", "", f"实际搜索 {len(run['searches'])} 个 query，预算已预留 {run['reserved_queries']} / {p['budget']['queries']}；打开详情页不计搜索 query。预留额度不等于实际调用量。"]

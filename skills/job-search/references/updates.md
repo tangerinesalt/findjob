@@ -22,6 +22,8 @@ number 指当前简表编号；也可用 job_url 唯一定位。只写变更字�
 
 详情字段为 duties/requirements/benefits/work_time/overtime/insured/legal_risk。可选 status：verified（有来源事实）、not_disclosed（已查未披露）、unverified（未核实）、blocked（来源受阻）、conflict（来源冲突）。空字段默认未核实。scope 标本岗/公司口径/其他工种参考，entity/year 可标法人及年报年份；这些信息不由脚本猜测。不同来源的矛盾或互补信息可用 observations 数组保留各自 text/sources/scope/status，不嵌套。
 
+未核实/受阻字段允许在 text 写缺口解释而不填来源，例如“未取得对应法人年度数据”；不能把无来源事实写成 verified。已查未披露应尽量附实际查看的页面，不能把未搜索写成已查。
+
 基本信息变更使用 basic，可含 company/title/location/salary/education_experience/date/job_url；值为保留口径的文本（date 如 `2026-09-27（刷新）`）。这些字段会同步更新简表和详情。变更基本信息或筛选结论时同项提供 reason、sources URL 数组及 checked_at，形成变化记录。改变岗位日期还要有 `date_evidence: {"url":"...","note":"岗位自身日期依据"}`。
 
 复核结论用 `state: kept/pending/excluded`；后两者移出主表并保留原详情。脚本不自行推断结论，也不把访问失败当下架。岗位编号保持不变以便追踪，不强制连续重排。已在待核实区的候选转入或大幅变化可由代理局部编辑后 check，无需转换旧报告。
