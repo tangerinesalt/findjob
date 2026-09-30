@@ -24,7 +24,7 @@ def main():
     from markdown_it import MarkdownIt
     encoding = tiktoken.get_encoding('o200k_base')
     tokens = lambda value: len(encoding.encode(value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)))
-    root = ROOT / '.scratch/fingjob/optimization-validation/benchmark'
+    root = ROOT / '.scratch/findjob/optimization-validation/benchmark'
     baseline = root / 'baseline'
     paths = subprocess.check_output(['git', 'ls-tree', '-r', '--name-only', 'baseline-20260928'], cwd=ROOT).decode().splitlines()
     for name in paths:

@@ -1,5 +1,7 @@
 # 小批保存与续接
 
+新任务使用 `.scratch/findjob/`。旧版 `.scratch/fingjob/` 中的账本、task.json 和工作稿仍按原路径读取，不因插件更名重新采集或搬动已有任务。
+
 直接编辑现有 run.json/task.json 即可；需要简短追加或恢复摘要时再用辅助脚本，不强制增加文件。
 
 ```text

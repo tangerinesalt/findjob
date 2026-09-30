@@ -3,10 +3,10 @@
 Python 3.10+，仅标准库。以下 `<skill>` 指本 SKILL.md 所在目录，路径含空格时加引号。
 
 ```text
-python -X utf8 "<skill>/scripts/job_report.py" init --profile "<skill>/references/unity-non-game.json" --as-of 2026-09-21 --run ".scratch/fingjob/20260921-01/run.json"
-python -X utf8 "<skill>/scripts/job_report.py" budget --run ".scratch/fingjob/20260921-01/run.json" --count 4
-python -X utf8 "<skill>/scripts/job_report.py" check --run ".scratch/fingjob/20260921-01/run.json"
-python -X utf8 "<skill>/scripts/job_report.py" render --run ".scratch/fingjob/20260921-01/run.json" --output "岗位报告_20260921.md"
+python -X utf8 "<skill>/scripts/job_report.py" init --profile "<skill>/references/unity-non-game.json" --as-of 2026-09-21 --run ".scratch/findjob/20260921-01/run.json"
+python -X utf8 "<skill>/scripts/job_report.py" budget --run ".scratch/findjob/20260921-01/run.json" --count 4
+python -X utf8 "<skill>/scripts/job_report.py" check --run ".scratch/findjob/20260921-01/run.json"
+python -X utf8 "<skill>/scripts/job_report.py" render --run ".scratch/findjob/20260921-01/run.json" --output "岗位报告_20260921.md"
 ```
 
 日期是示例，执行时替换。init 不覆盖已有运行；继续时读取旧文件。render 默认不覆盖已有报告，要更新同一报告时显式加 `--replace`。画像支持 UTF-8 Markdown 或 JSON，运行仍为 UTF-8 JSON，可通过文件编辑工具更新；仅主代理写 run.json。`budget` 必须在搜索前预留，失败搜索也记入实际日志；并行分支总额度先预留，子代理不用此命令。账本不是对搜索工具的强制拦截器。

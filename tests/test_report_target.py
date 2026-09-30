@@ -55,7 +55,7 @@ class Targets(unittest.TestCase):
         self.put("求职画像.md", "# 求职画像\n| 属性 | 值 |\n|---|---|\n|岗位|Unity|\n")
         self.put("指南.md", "# 岗位指南\n```markdown\n" + REPORT + "```\n")
         self.put("比较分析.md", REPORT.replace("# 岗位报告：Unity非游戏开发", "# 9月21日与9月22日岗位采集对比"))
-        self.put(".scratch/fingjob/test/working.md", REPORT)
+        self.put(".scratch/findjob/test/working.md", REPORT)
         result = module.resolve(self.root)
         self.assertEqual(result["report"], str(self.new.resolve()))
         self.assertEqual(len(result["candidates"]), 2)

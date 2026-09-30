@@ -14,18 +14,18 @@ import importlib.util
 from datetime import date
 from urllib.parse import urlsplit
 
-_profile_spec = importlib.util.spec_from_file_location('fingjob_profile_format', Path(__file__).resolve().parents[3] / 'scripts/profile_data.py')
+_profile_spec = importlib.util.spec_from_file_location('findjob_profile_format', Path(__file__).resolve().parents[3] / 'scripts/profile_data.py')
 profile_format = importlib.util.module_from_spec(_profile_spec)
 _profile_spec.loader.exec_module(profile_format)
 validate_profile = profile_format.validate_profile
-_store_spec = importlib.util.spec_from_file_location('fingjob_file_store', Path(__file__).resolve().parents[3] / 'scripts/file_store.py')
+_store_spec = importlib.util.spec_from_file_location('findjob_file_store', Path(__file__).resolve().parents[3] / 'scripts/file_store.py')
 file_store = importlib.util.module_from_spec(_store_spec)
 _store_spec.loader.exec_module(file_store)
 load, save = file_store.load, file_store.save
-_facts_spec = importlib.util.spec_from_file_location('fingjob_job_facts', Path(__file__).with_name('job_facts.py'))
+_facts_spec = importlib.util.spec_from_file_location('findjob_job_facts', Path(__file__).with_name('job_facts.py'))
 job_facts = importlib.util.module_from_spec(_facts_spec)
 _facts_spec.loader.exec_module(job_facts)
-_format_spec = importlib.util.spec_from_file_location('fingjob_report_format', Path(__file__).with_name('report_format.py'))
+_format_spec = importlib.util.spec_from_file_location('findjob_report_format', Path(__file__).with_name('report_format.py'))
 report_format = importlib.util.module_from_spec(_format_spec)
 _format_spec.loader.exec_module(report_format)
 
@@ -277,7 +277,7 @@ def render(run, result):
     kept = result["kept"]
     company_count = len({norm(jobs[x["id"]]["company"]) for x in kept})
     adjacent = sum(jobs[x["id"]]["relevance"] == "adjacent" for x in kept)
-    out = [f"# 岗位报告：{esc(p['name'])}", "<!-- fingjob:report v2 -->", "", f"检索基准日：{today}。本轮纳入 **{len(kept)} 条岗位、{company_count} 家单位**，其中相关方向 {adjacent} 条；不代表全网总量。", "",
+    out = [f"# 岗位报告：{esc(p['name'])}", "<!-- findjob:report v2 -->", "", f"检索基准日：{today}。本轮纳入 **{len(kept)} 条岗位、{company_count} 家单位**，其中相关方向 {adjacent} 条；不代表全网总量。", "",
            "## 第一部分：岗位简表", "",
            f"时间：发布自 {back_months(today, p['freshness']['published_months'])} 起，{'且' if p['freshness'].get('mode', 'any') == 'all' else '或'}刷新自 {back_months(today, p['freshness']['refreshed_months'])} 起，均截至 {today}。",
            f"薪资：{esc(p['salary']['currency'])} 月薪下限 ≥ {p['salary']['min_lower_monthly']:g}，上限 ≥ {p['salary']['min_upper_monthly']:g}；允许未知：{'是' if p['salary']['allow_unknown'] else '否'}。",

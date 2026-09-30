@@ -1,7 +1,9 @@
 {
-  "name": "fingjob",
-  "version": "0.1.1",
+  "name": "findjob",
+  "version": "0.2.0",
   "description": "建立求职画像、搜索岗位、补充资料并复核招聘信息，输出附来源的 Markdown 文件。",
-  "author": {"name": "tangerinesalt"},
+  "author": {
+    "name": "tangerinesalt"
+  },
   "repository": "https://github.com/tangerinesalt/findjob"
 }

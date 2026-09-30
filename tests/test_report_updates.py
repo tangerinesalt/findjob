@@ -10,6 +10,25 @@ fmt = report.report_format
 
 
 class Updates(unittest.TestCase):
+    def test_renamed_plugin_can_enrich_a_legacy_report(self):
+        source = self.source().replace('<!-- findjob:report v2 -->', '<!-- fingjob:report v2 -->')
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / '旧清单.md'
+            path.write_text(source, encoding='utf-8')
+            task = target.prepare(directory, 'enrich', '2026-09-30', report=str(path))
+            task_dir = Path(task['task']).parent
+            self.assertEqual(task_dir.parent.name, 'findjob')
+            legacy_dir = Path(directory) / '.scratch' / 'fingjob' / task_dir.name
+            legacy_dir.parent.mkdir(parents=True)
+            task_dir.rename(legacy_dir)
+            legacy_task = legacy_dir / 'task.json'
+            self.assertEqual(target.inspect_report(str(legacy_task), '01', ['benefits'])['text'], '- **福利**：未核实。')
+            result = target.publish(str(legacy_task), '旧任务更名后续接')
+            text = Path(result['output']).read_text(encoding='utf-8')
+            self.assertIn('<!-- fingjob:report v2 -->', text)
+            self.assertEqual(fmt.check(text)['errors'], [])
+            self.assertEqual(path.read_text(encoding='utf-8'), source)
+
     def source(self):
         run = run_record(job())
         return report.render(run, report.check(run)) + '\n用户注释：保留原文 | C++。\n'

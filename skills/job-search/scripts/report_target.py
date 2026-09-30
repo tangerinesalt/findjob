@@ -14,12 +14,12 @@ import sys
 import tempfile
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
-_spec = importlib.util.spec_from_file_location('fingjob_report_format', Path(__file__).with_name('report_format.py'))
+_spec = importlib.util.spec_from_file_location('findjob_report_format', Path(__file__).with_name('report_format.py'))
 report_format = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(report_format)
 
 
-_store_spec = importlib.util.spec_from_file_location('fingjob_file_store', Path(__file__).resolve().parents[3] / 'scripts/file_store.py')
+_store_spec = importlib.util.spec_from_file_location('findjob_file_store', Path(__file__).resolve().parents[3] / 'scripts/file_store.py')
 file_store = importlib.util.module_from_spec(_store_spec)
 _store_spec.loader.exec_module(file_store)
 write_json = file_store.save
@@ -163,7 +163,7 @@ def prepare(workspace, mode, as_of, report=None, context_report=None, queries=No
     selected = resolve(workspace, report, context_report)
     source = Path(selected["report"])
     raw = source.read_bytes()
-    parent = workspace / ".scratch" / "fingjob"
+    parent = workspace / ".scratch" / "findjob"
     parent.mkdir(parents=True, exist_ok=True)
     task_dir = Path(tempfile.mkdtemp(prefix=f"{mode}-{as_of}-", dir=parent))
     (task_dir / "source.md").write_bytes(raw)

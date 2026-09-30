@@ -3,7 +3,7 @@
   "interface": {"displayName": "Findjob"},
   "plugins": [
     {
-      "name": "fingjob",
+      "name": "findjob",
       "source": {
         "source": "url",
         "url": "https://github.com/tangerinesalt/findjob.git",

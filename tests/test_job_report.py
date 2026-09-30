@@ -128,7 +128,7 @@ class Rules(unittest.TestCase):
             self.assertTrue(module.check(run_record(j))["errors"])
 
     def test_budget_resume_and_report_cli(self):
-        with tempfile.TemporaryDirectory(prefix="fingjob-test-") as directory, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        with tempfile.TemporaryDirectory(prefix="findjob-test-") as directory, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             path = Path(directory) / "run.json"
             output = Path(directory) / "report.md"
             self.assertEqual(module.main(["init", "--profile", str(SKILL / "references" / "unity-non-game.json"), "--as-of", "2026-09-21", "--run", str(path)]), 0)

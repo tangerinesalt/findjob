@@ -1,6 +1,6 @@
 {
-  "name": "fingjob",
-  "version": "0.1.1",
+  "name": "findjob",
+  "version": "0.2.0",
   "description": "Build job profiles, search jobs, enrich existing reports, and refresh job evidence with sourced Markdown results.",
   "author": {
     "name": "tangerinesalt"
@@ -8,12 +8,12 @@
   "repository": "https://github.com/tangerinesalt/findjob",
   "skills": "./skills/",
   "interface": {
-    "displayName": "Fingjob",
-    "shortDescription": "\u5efa\u7acb\u6c42\u804c\u753b\u50cf\uff0c\u641c\u7d22\u5c97\u4f4d\uff0c\u8865\u5145\u6e05\u5355\u8be6\u60c5\u5e76\u590d\u6838\u62db\u8058\u53d8\u5316\u3002",
-    "longDescription": "\u8f7b\u91cf\u6c42\u804c\u7814\u7a76\u63d2\u4ef6\u3002job-profile \u5efa\u7acb\u53ef\u7f16\u8f91 Markdown \u753b\u50cf\uff1bjob-search \u6309\u6761\u4ef6\u641c\u7d22\u5e76\u751f\u6210\u5c97\u4f4d\u6e05\u5355\uff1bjob-enrich \u8865\u5145\u5df2\u6709\u6e05\u5355\u7684\u804c\u8d23\u3001\u798f\u5229\u548c\u4f01\u4e1a\u4fe1\u606f\uff1bjob-refresh \u6309\u5f53\u524d\u65e5\u671f\u590d\u6838\u5c97\u4f4d\u6709\u6548\u6027\u4e0e\u53d8\u5316\u3002\u4e24\u4e2a\u6e05\u5355\u5165\u53e3\u5747\u652f\u6301\u6307\u5b9a\u6587\u4ef6\uff0c\u6216\u4f18\u5148\u4f7f\u7528\u5bf9\u8bdd\u6700\u65b0\u7ed3\u679c\u3001\u518d\u6309\u5de5\u4f5c\u7a7a\u95f4\u4fee\u6539\u65f6\u95f4\u9009\u62e9\uff0c\u9ed8\u8ba4\u53e6\u5b58\u5e76\u4fdd\u7559\u6765\u6e90\u3002",
+    "displayName": "Findjob",
+    "shortDescription": "建立求职画像，搜索岗位，补充清单详情并复核招聘变化。",
+    "longDescription": "轻量求职研究插件。job-profile 建立可编辑 Markdown 画像；job-search 按条件搜索并生成岗位清单；job-enrich 补充已有清单的职责、福利和企业信息；job-refresh 按当前日期复核岗位有效性与变化。两个清单入口均支持指定文件，或优先使用对话最新结果、再按工作空间修改时间选择，默认另存并保留来源。",
     "developerName": "tangerinesalt",
     "category": "Productivity",
     "capabilities": [],
-    "defaultPrompt": "\u4f7f\u7528 $job-search \u6309\u6211\u7684\u8981\u6c42\u641c\u7d22\u8fd1\u671f\u5c97\u4f4d\uff0c\u6838\u5b9e\u7b5b\u9009\u6761\u4ef6\u5e76\u8f93\u51fa Markdown \u62a5\u544a\u3002"
+    "defaultPrompt": "使用 $job-search 按我的要求搜索近期岗位，核实筛选条件并输出 Markdown 报告。"
   }
 }

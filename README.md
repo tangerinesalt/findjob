@@ -1,19 +1,19 @@
-# Fingjob
+# Findjob
 
 适用于 Codex 和 Claude Code 的轻量岗位研究插件。根据求职条件建立画像、搜索岗位、补充资料并复核清单，结果以附来源的 Markdown 文件保存在当前工作空间。
 
-仓库及市场名为 `findjob`，插件名为 `fingjob`。
+仓库、市场及插件名统一为 `findjob`。
 
 ## 功能与入口
 
 | 入口 | 功能 | Codex 调用 | Claude Code 调用 |
 |---|---|---|---|
-| `job-profile` | 根据需求、简历或已有画像，生成可编辑的求职画像 | `$job-profile` | `/fingjob:job-profile` |
-| `job-search` | 按条件搜索近期岗位，输出简表和逐岗详情 | `$job-search` | `/fingjob:job-search` |
-| `job-enrich` | 补充已有清单的职责、福利、工时及企业信息 | `$job-enrich` | `/fingjob:job-enrich` |
-| `job-refresh` | 重新核实已有岗位的日期、状态和筛选条件 | `$job-refresh` | `/fingjob:job-refresh` |
+| `job-profile` | 根据需求、简历或已有画像，生成可编辑的求职画像 | `$job-profile` | `/findjob:job-profile` |
+| `job-search` | 按条件搜索近期岗位，输出简表和逐岗详情 | `$job-search` | `/findjob:job-search` |
+| `job-enrich` | 补充已有清单的职责、福利、工时及企业信息 | `$job-enrich` | `/findjob:job-enrich` |
+| `job-refresh` | 重新核实已有岗位的日期、状态和筛选条件 | `$job-refresh` | `/findjob:job-refresh` |
 
-Codex 也可从技能选择器选择 `fingjob` 对应入口。搜索可直接描述条件或指定画像文件；补充、复核可指定清单，未指定时优先使用对话最近完成的清单，再从当前工作空间选择。
+Codex 也可从技能选择器选择 `findjob` 对应入口。搜索可直接描述条件或指定画像文件；补充、复核可指定清单，未指定时优先使用对话最近完成的清单，再从当前工作空间选择。
 
 ## 运行依赖
 
@@ -30,21 +30,21 @@ Codex 也可从技能选择器选择 `fingjob` 对应入口。搜索可直接描
 
 ```sh
 codex plugin marketplace add tangerinesalt/findjob
-codex plugin add fingjob@findjob
+codex plugin add findjob@findjob
 ```
 
 ### Claude Code
 
 ```sh
 claude plugin marketplace add tangerinesalt/findjob
-claude plugin install fingjob@findjob
+claude plugin install findjob@findjob
 ```
 
 安装后开启新会话，在需要保存画像或岗位清单的项目中调用入口。例如：
 
 ```text
 Codex：使用 $job-search 搜索大模型应用开发岗位，地点不限，排除猎头。
-Claude Code：/fingjob:job-search 搜索大模型应用开发岗位，地点不限，排除猎头。
+Claude Code：/findjob:job-search 搜索大模型应用开发岗位，地点不限，排除猎头。
 ```
 
 更新已安装版本：
@@ -52,14 +52,32 @@ Claude Code：/fingjob:job-search 搜索大模型应用开发岗位，地点不�
 ```sh
 # Codex
 codex plugin marketplace upgrade findjob
-codex plugin add fingjob@findjob
+codex plugin add findjob@findjob
 
 # Claude Code
 claude plugin marketplace update findjob
-claude plugin update fingjob@findjob
+claude plugin update findjob@findjob
 ```
 
 更新后开启新会话。若提示不存在 `plugin` 命令，请先更新对应客户端。
+
+### 从旧名称迁移
+
+旧插件 `fingjob` 不会自动改名。先更新市场并安装新名称：
+
+```sh
+# Codex
+codex plugin marketplace upgrade findjob
+codex plugin add findjob@findjob
+
+# Claude Code
+claude plugin marketplace update findjob
+claude plugin install findjob@findjob
+```
+
+确认新插件可用后，Codex 执行 `codex plugin remove fingjob@findjob`，Claude Code 执行 `claude plugin uninstall fingjob@findjob --keep-data`。若旧版来自 Codex 的 `personal` 市场，卸载标识改用 `fingjob@personal`，并先按上文添加仓库市场。
+
+已有画像和岗位清单可继续使用；新任务写入 `.scratch/findjob/`，旧任务仍可按原 `.scratch/fingjob/` 路径续接，无需搬动历史文件。
 
 ## 功能边界
 

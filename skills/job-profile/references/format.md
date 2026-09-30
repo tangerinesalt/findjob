@@ -15,15 +15,15 @@
 `<profile-skill>` 为本job-profile目录，`<search-skill>` 为同插件job-search目录。路径均加引号；日期换成实际检索日。脚本不会解析简历或代替对话判断，这些由宿主代理完成。
 
 ```text
-python -X utf8 "<profile-skill>/scripts/job_profile.py" draft --role "Unity开发" --role "VR开发" --name "上海Unity非游戏开发" --output ".scratch/fingjob/profile-draft.json"
+python -X utf8 "<profile-skill>/scripts/job_profile.py" draft --role "Unity开发" --role "VR开发" --name "上海Unity非游戏开发" --output ".scratch/findjob/profile-draft.json"
 ```
 
 草稿使用现有搜索画像JSON结构及可选扩展字段；生成后根据对话修改实际条件，不能只改名称。内部草稿同名时不覆盖，可另起临时文件名。用户确认属性（或已授权推荐默认值）后：
 
 ```text
-python -X utf8 "<profile-skill>/scripts/job_profile.py" create --input ".scratch/fingjob/profile-draft.json" --workspace "<当前工作空间绝对路径>"
+python -X utf8 "<profile-skill>/scripts/job_profile.py" create --input ".scratch/findjob/profile-draft.json" --workspace "<当前工作空间绝对路径>"
 python -X utf8 "<profile-skill>/scripts/job_profile.py" check --input "<工作空间>/上海Unity非游戏开发.md"
-python -X utf8 "<search-skill>/scripts/job_report.py" init --profile "<工作空间>/上海Unity非游戏开发.md" --as-of 2026-09-23 --run ".scratch/fingjob/<运行编号>/run.json"
+python -X utf8 "<search-skill>/scripts/job_report.py" init --profile "<工作空间>/上海Unity非游戏开发.md" --as-of 2026-09-23 --run ".scratch/findjob/<运行编号>/run.json"
 ```
 
 create输出实际文件路径；同名时自动编号，不根据文件标题判断是否覆盖。未传workspace时用进程当前目录，因此宿主应显式传用户工作空间。读取兼容UTF-8 BOM，写入UTF-8。

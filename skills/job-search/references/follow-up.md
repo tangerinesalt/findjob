@@ -18,7 +18,7 @@ python -X utf8 "<search-skill>/scripts/report_target.py" prepare --mode enrich -
 python -X utf8 "<search-skill>/scripts/report_target.py" prepare --mode refresh --as-of YYYY-MM-DD --workspace "<当前工作目录>" --context-report "对话刚完成的清单.md"
 ```
 
-未指定且无上下文时省略两个 report 参数。prepare 返回 `.scratch/fingjob/<任务>/task.json`、`source.md` 快照和 `working.md`。原文完整复制，手工补充不会因重新生成而丢失。后续只编辑 working.md；继续中断任务时读取该 task.json 和工作稿，保持原任务日期和剩余预算，不再 prepare。
+未指定且无上下文时省略两个 report 参数。prepare 返回 `.scratch/findjob/<任务>/task.json`、`source.md` 快照和 `working.md`。原文完整复制，手工补充不会因重新生成而丢失。后续只编辑 working.md；继续中断任务时读取该 task.json 和工作稿，保持原任务日期和剩余预算，不再 prepare。
 
 ## 证据与进度
 

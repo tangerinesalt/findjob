@@ -8,10 +8,10 @@ from pathlib import Path
 import sys
 
 _shared = Path(__file__).resolve().parents[3] / 'scripts'
-_spec = importlib.util.spec_from_file_location('fingjob_profile_data', _shared / 'profile_data.py')
+_spec = importlib.util.spec_from_file_location('findjob_profile_data', _shared / 'profile_data.py')
 profile_data = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(profile_data)
-_spec = importlib.util.spec_from_file_location('fingjob_file_store', _shared / 'file_store.py')
+_spec = importlib.util.spec_from_file_location('findjob_file_store', _shared / 'file_store.py')
 file_store = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(file_store)
 

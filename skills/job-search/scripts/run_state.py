@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 
 
-_store_spec = importlib.util.spec_from_file_location('fingjob_file_store', Path(__file__).resolve().parents[3] / 'scripts/file_store.py')
+_store_spec = importlib.util.spec_from_file_location('findjob_file_store', Path(__file__).resolve().parents[3] / 'scripts/file_store.py')
 file_store = importlib.util.module_from_spec(_store_spec)
 _store_spec.loader.exec_module(file_store)
 read, write = file_store.load, file_store.save
