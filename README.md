@@ -6,12 +6,12 @@
 
 ## 功能与入口
 
-| 入口 | 功能 | Codex 调用 | Claude Code 调用 |
-|---|---|---|---|
+| 入口            | 功能                                           | Codex 调用       | Claude Code 调用         |
+| --------------- | ---------------------------------------------- | ---------------- | ------------------------ |
 | `job-profile` | 根据需求、简历或已有画像，生成可编辑的求职画像 | `$job-profile` | `/findjob:job-profile` |
-| `job-search` | 按条件搜索近期岗位，输出简表和逐岗详情 | `$job-search` | `/findjob:job-search` |
-| `job-enrich` | 补充已有清单的职责、福利、工时及企业信息 | `$job-enrich` | `/findjob:job-enrich` |
-| `job-refresh` | 重新核实已有岗位的日期、状态和筛选条件 | `$job-refresh` | `/findjob:job-refresh` |
+| `job-search`  | 按条件搜索近期岗位，输出简表和逐岗详情         | `$job-search`  | `/findjob:job-search`  |
+| `job-enrich`  | 补充已有清单的职责、福利、工时及企业信息       | `$job-enrich`  | `/findjob:job-enrich`  |
+| `job-refresh` | 重新核实已有岗位的日期、状态和筛选条件         | `$job-refresh` | `/findjob:job-refresh` |
 
 Codex 也可从技能选择器选择 `findjob` 对应入口。搜索可直接描述条件或指定画像文件；补充、复核可指定清单，未指定时优先使用对话最近完成的清单，再从当前工作空间选择。
 
@@ -61,26 +61,9 @@ claude plugin update findjob@findjob
 
 更新后开启新会话。若提示不存在 `plugin` 命令，请先更新对应客户端。
 
-### 从旧名称迁移
-
-旧插件 `fingjob` 不会自动改名。先更新市场并安装新名称：
-
-```sh
-# Codex
-codex plugin marketplace upgrade findjob
-codex plugin add findjob@findjob
-
-# Claude Code
-claude plugin marketplace update findjob
-claude plugin install findjob@findjob
-```
-
-确认新插件可用后，Codex 执行 `codex plugin remove fingjob@findjob`，Claude Code 执行 `claude plugin uninstall fingjob@findjob --keep-data`。若旧版来自 Codex 的 `personal` 市场，卸载标识改用 `fingjob@personal`，并先按上文添加仓库市场。
-
-已有画像和岗位清单可继续使用；新任务写入 `.scratch/findjob/`，旧任务仍可按原 `.scratch/fingjob/` 路径续接，无需搬动历史文件。
-
 ## 功能边界
 
+- 本插件用于借助代理工具快速搜集、筛选和整理公开岗位信息。对于仅发布于招聘平台的岗位，优先使用现有搜索和网页访问能力获取，不强制覆盖，也不要求通过爬虫抓取。
 - 搜索基于公开或已授权访问的资料，受搜索索引、登录限制和页面可达性影响，不保证穷尽所有岗位或岗位仍可投递。
 - 缺失或冲突信息会保留说明；福利、工时、社保人数及法律风险不作推测，员工规模不等于社保人数。
 - 未指定的条件按入口默认值处理；岗位筛选依赖已取得的证据，脚本校验不能替代网页事实核验。
