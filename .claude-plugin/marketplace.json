@@ -1,0 +1,12 @@
+{
+  "name": "findjob",
+  "description": "Fingjob 岗位研究插件的个人发布市场。",
+  "owner": {"name": "tangerinesalt"},
+  "plugins": [
+    {
+      "name": "fingjob",
+      "source": "./",
+      "description": "轻量岗位研究插件：画像、搜索、资料补充和清单复核。"
+    }
+  ]
+}

@@ -1,51 +1,70 @@
 # Fingjob
 
-轻量岗位研究插件。仓库名为 `findjob`，插件名保留 `fingjob`。
+适用于 Codex 和 Claude Code 的轻量岗位研究插件。根据求职条件建立画像、搜索岗位、补充资料并复核清单，结果以附来源的 Markdown 文件保存在当前工作空间。
 
-| 入口 | 用途 |
-|---|---|
-| `job-profile` | 根据需求、简历或已有画像生成可编辑 Markdown 求职画像 |
-| `job-search` | 搜索并筛选近期岗位，输出附来源的简表和详情 |
-| `job-enrich` | 补充既有清单的职责、福利、工时及企业信息 |
-| `job-refresh` | 重新核实既有岗位日期、状态和筛选条件 |
+仓库及市场名为 `findjob`，插件名为 `fingjob`。
 
-## 当前版本
+## 功能与入口
 
-本轮优化覆盖：文件操作修复、互补证据合并与稳定排序、标准清单局部更新、按信息增量分配查询、简短进度/字段读取及共享画像与存储模块。
+| 入口 | 功能 | Codex 调用 | Claude Code 调用 |
+|---|---|---|---|
+| `job-profile` | 根据需求、简历或已有画像，生成可编辑的求职画像 | `$job-profile` | `/fingjob:job-profile` |
+| `job-search` | 按条件搜索近期岗位，输出简表和逐岗详情 | `$job-search` | `/fingjob:job-search` |
+| `job-enrich` | 补充已有清单的职责、福利、工时及企业信息 | `$job-enrich` | `/fingjob:job-enrich` |
+| `job-refresh` | 重新核实已有岗位的日期、状态和筛选条件 | `$job-refresh` | `/fingjob:job-refresh` |
 
-- 核心规则及事实来源保持可追溯；未知信息不猜测，单岗缺项不阻塞交付。
-- 查询路由是软参考，不要求遍历全部方向或花完预算。
-- 标准报告可按岗位/字段更新；非标准 Markdown 可直接局部编辑，不强制转换整份 JSON。
-- 运行时仅需 Python 3.10+ 标准库。在线检索由宿主提供，脚本本身不联网。
-- `.codex-plugin/`、`skills/`、`scripts/` 应整体分发；画像解析和原子存储位于根目录 `scripts/`。
+Codex 也可从技能选择器选择 `fingjob` 对应入口。搜索可直接描述条件或指定画像文件；补充、复核可指定清单，未指定时优先使用对话最近完成的清单，再从当前工作空间选择。
 
-详细阶段记录、测试结果及量化边界见 [优化记录](docs/optimization-20260928.md)。
+## 运行依赖
 
-## 开发验证
+- **Python 3.10+**：文件生成、画像解析、筛选及报告处理脚本仅依赖 Python 标准库，运行插件不需要安装第三方 Python 包。
+- 请自行安装 Python 并配置 `PATH`，确保 Codex / Claude Code 的终端可以运行 `python --version`，且版本不低于 3.10。安装后必要时重启客户端；若系统仅提供 `python3` 或 `py -3`，可让代理使用对应命令。
+- 使用支持插件的 Codex 或 Claude Code，并允许其在当前工作空间读写文件、运行 Python。通过 GitHub 安装还需 Git 和可访问该仓库的网络。
+- 搜索、补充及复核依赖宿主可用的在线搜索与网页访问能力；插件不自带搜索服务或招聘网站账号。仅建立画像不要求联网。
 
-```text
-python -m pip install -r requirements-dev.txt
-python -B -X utf8 -m unittest discover -s tests -v
-python -B -X utf8 tests/benchmark_efficiency.py
+## 安装
+
+以下命令在终端执行，不是在聊天输入框中执行。
+
+### Codex
+
+```sh
+codex plugin marketplace add tangerinesalt/findjob
+codex plugin add fingjob@findjob
 ```
 
-基准测试从本 Git 仓库的 `baseline-20260928` 导出旧版本，使用相同合成材料对照；输出保存于被忽略的 `.scratch/`。token 按 `o200k_base` 统计文本，不是宿主实际计费或端到端总消耗。真实网络测试产物、个人画像及岗位清单仅保留本地。
+### Claude Code
 
-## 版本与回退
-
-- `baseline-20260928`：优化前安装版本 `0.1.0+codex.20260924023528`，原始 23 个插件文件按字节保存，38 项原有测试通过；已知渲染、清单选择、链接、长文件名和重复信息问题保留在该标签。
-- `optimized-20260929`：六阶段优化完成版本；每个优化阶段分别提交，详见优化记录。
-
-优先在独立工作目录查看基线，保留当前开发现场：
-
-```text
-git worktree add --detach ../findjob-baseline baseline-20260928
+```sh
+claude plugin marketplace add tangerinesalt/findjob
+claude plugin install fingjob@findjob
 ```
 
-若需要在当前开发分支恢复基线，先提交或另存未提交改动，再执行：
+安装后开启新会话，在需要保存画像或岗位清单的项目中调用入口。例如：
 
 ```text
-git restore --source baseline-20260928 -- .codex-plugin skills scripts tests
+Codex：使用 $job-search 搜索大模型应用开发岗位，地点不限，排除猎头。
+Claude Code：/fingjob:job-search 搜索大模型应用开发岗位，地点不限，排除猎头。
 ```
 
-这会恢复基线中的文件并移除这些目录内基线不存在的已跟踪文件，不影响本地岗位清单。仓库副本与安装缓存相互独立，Git 回退不会自动切换已安装插件；安装时需同步完整插件到个人市场源目录，再运行缓存版本更新和 `codex plugin add fingjob@personal`。安装新版本后在新对话中加载技能。
+更新已安装版本：
+
+```sh
+# Codex
+codex plugin marketplace upgrade findjob
+codex plugin add fingjob@findjob
+
+# Claude Code
+claude plugin marketplace update findjob
+claude plugin update fingjob@findjob
+```
+
+更新后开启新会话。若提示不存在 `plugin` 命令，请先更新对应客户端。
+
+## 功能边界
+
+- 搜索基于公开或已授权访问的资料，受搜索索引、登录限制和页面可达性影响，不保证穷尽所有岗位或岗位仍可投递。
+- 缺失或冲突信息会保留说明；福利、工时、社保人数及法律风险不作推测，员工规模不等于社保人数。
+- 未指定的条件按入口默认值处理；岗位筛选依赖已取得的证据，脚本校验不能替代网页事实核验。
+- 不自动投递简历、联系招聘方、购买数据、绕过访问限制或建立定时任务。
+- 文件保存在用户工作空间，不自动上传本仓库；处理内容仍遵循所用 Codex / Claude Code 服务的数据政策。

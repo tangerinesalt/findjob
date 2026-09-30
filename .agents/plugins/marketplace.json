@@ -1,0 +1,16 @@
+{
+  "name": "findjob",
+  "interface": {"displayName": "Findjob"},
+  "plugins": [
+    {
+      "name": "fingjob",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/tangerinesalt/findjob.git",
+        "ref": "main"
+      },
+      "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+      "category": "Productivity"
+    }
+  ]
+}
