@@ -22,7 +22,7 @@ python -X utf8 "<search-skill>/scripts/report_target.py" prepare --mode refresh 
 
 ## 证据与进度
 
-默认 query 上限：enrich 12 次，refresh 60 次；均为建议的本轮总预算，用户本次要求优先，不必花完。打开已有链接不计 query。执行前在 task.json 的 notes 简记本批计划，执行后逐条加入 searches：`query/source/outcome/note`，区分 success / no_matches / blocked。已有运行的预算不重置冒充原任务继续；这两个入口各自是新的补充/复核任务。单岗约 3 分钟作为软参考，失败后换一次公开渠道仍无结果就标缺口并继续。每批不超过 5 岗保存工作稿和下一步。无网页能力时可整理历史资料，但明确未进行在线补充/复核。
+默认 query 上限：enrich 12 次，refresh 60 次；均为建议的本轮总预算，用户本次要求优先，不必花完。打开已有链接不计 query。执行前在 task.json 的 notes 简记本批计划，执行后用 [小批保存](progress.md) 一并记录 searches/accesses/notes：查询沿用 `query/source/outcome/note`，区分 success / no_matches / blocked。已有运行的预算不重置冒充原任务继续；这两个入口各自是新的补充/复核任务。单岗约 3 分钟作为软参考，失败后换一次公开渠道仍无结果就标缺口并继续。每完成一小批（参考最多 5 岗）保存工作稿和下一步。无网页能力时可整理历史资料，但明确未进行在线补充/复核。
 
 prepare 可传 `--queries N` 直接采用用户本轮预算。页面访问另记 accesses，便于比较实际成本。续接可先用 [进度摘要](progress.md) 的 status 命令，再读相关岗位；不必重读整份历史。
 

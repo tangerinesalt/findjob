@@ -29,7 +29,7 @@ v1 可选扩展：`target_roles`、`excluded_keywords`、`excluded_locations`、
 
 ## 运行 v1
 
-init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`。
+init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`。小批保存与完成状态用 [progress.md](progress.md) 的命令；无需另写临时保存脚本。
 
 `searches` 每项：`{"query":"实际检索词","source":"web/官网等","phase":"discovery","outcome":"success","note":"简短结果"}`。
 
@@ -79,13 +79,14 @@ init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`�
 - status：open/unknown/closed；deadline 可省略或 null，日期为 YYYY-MM-DD。
 - relevance：core/adjacent/unrelated/unknown；games：yes/no/unknown；recruiter：employer/headhunter/anonymous/unknown；profile_match：yes/no/unknown。
 - dates.kind：published/refreshed/job_time/crawled。crawled 永远不证明招聘新鲜度；job_time 用刷新窗口。用来筛选的日期必须有短证据和有效网页 URL。截止日不是发布日期。
-- salary.period：month/year/day/hour/unknown；currency 为原始币种。min/max 为元数值或 null，months 为明确的年发薪月数或 null。面议/未披露用 period=unknown，min=max=null，原文写在 text。已知任一数值必须提供 salary 证据。
+- salary.period：month/year/day/hour/unknown；currency 为原始币种。min/max 为元数值或 null，months 为明确的年发薪月数或 null。面议/未披露用 period=unknown，min=max=null，原文写在 text。披露金额但周期不明时保留 min/max，只将 period 记 unknown；不能把“8000–10000元”改成无金额，也不能擅自补 `/月`。已知任一数值必须提供 salary 证据。
 - evidence 为上述判断依据。缺失不等于通过；筛选输出“待核实”。证据 note 用改写的短描述，不抄整段内容。
 - details 允许 duties、requirements、benefits、work_time、overtime、insured、legal_risk；每项为 text 与 sources URL 列表。未取得就省略，脚本标未核实，不能填造假来源。
 - 详情可选 status 区分 verified/not_disclosed/unverified/blocked/conflict；未采集默认未核实，不等同已查未披露。scope/entity/year/observed_at 记录适用范围、法人、年报年份及访问日；详细格式及后续更新见 [updates.md](updates.md)，仅需局部更新时读取。
 - discussions 每项为 `{"text":"个人反馈摘要，未独立证实","url":"https://...","date":"2025-04-01或未披露","scope":"公司层面，非特定岗位"}`。
 - notes 放冲突/局限；主要岗位身份、日期、薪资有冲突未解决时，将相应判断保持 unknown，或不提供未经确认的数值。
 - 可选 `requisition_id`、`team` 保存已知招聘编号、团队，防止同公司同名同城不同机会误合并；`identity_key` 仅在已确认跨来源属于同一岗位时填写，不能凭岗位名猜测。
+- 同公司同地点下，同规范 URL 且同标题、同招聘编号或已确认 identity_key 可支持合并；编号、团队、identity_key 或地点明确不同则分开。同名跨链接且缺少已确认标识时保留为不同记录，在 notes 提示疑似关联；团队相同不能证明同一岗位。
 - `check` 先稳定合并重复记录的互补证据，再筛选；不会改写原始 jobs。核心值冲突列待核实，保留各来源，代理按实际证据解决后再更新原记录。输出默认按日期倒序，同日按公司/岗位/地点/链接稳定排序；画像偏好展示但不自动评分。
 
 `check` 返回 kept/excluded/pending/duplicates 和 errors。结构错误返回非零退出码；被正常筛掉不是执行错误。`render` 只将 kept 写入简表和详情，末尾提供未纳入原因与来源访问情况。程序不能验证人写的 evidence 是否真实，仍需原页核实。

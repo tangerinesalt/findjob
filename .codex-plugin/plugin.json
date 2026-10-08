@@ -1,6 +1,6 @@
 {
   "name": "findjob",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Build job profiles, search jobs, enrich existing reports, and refresh job evidence with sourced Markdown results.",
   "author": {
     "name": "tangerinesalt"

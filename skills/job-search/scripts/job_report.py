@@ -81,6 +81,70 @@ def merge(base, overlay):
     return result
 
 
+_PAY_NUMBER = r"\d+(?:,\d{3})*(?:\.\d+)?"
+_PAY_UNIT = r"(?:[kK]|千|万|元)"
+_PAY_RANGE = re.compile(r"(?<![\d.])(" + _PAY_NUMBER + r")\s*(" + _PAY_UNIT + r")?\s*[-–—~～至]\s*(" + _PAY_NUMBER + r")\s*(" + _PAY_UNIT + r")")
+_PAY_AMOUNT = re.compile(r"(?<![\d.])(" + _PAY_NUMBER + r")\s*(" + _PAY_UNIT + r")(?![A-Za-z])")
+
+
+def salary_amounts(text):
+    """Recover one explicit amount expression, without inferring pay period/currency."""
+    # Recovery covers simple advertised amounts only. Bounds, approximations,
+    # group packages and variable components require an explicit observation.
+    if re.search(r"约|左右|预计|大概|低于|小于|高于|大于|少于|多于|不足|超过|至少|至多|最低|最高|低至|高达|最少|最多|上限|下限|起步|保底|封顶|岗位组|岗位群|年包|总包|薪酬包|补贴|奖金|年终奖|绩效|提成|报销|[<>≤≥]", text):
+        return None
+    if re.search(r"(?:^|[：:（(，,;；\s])[-−]\s*\d", text):
+        return None
+    # Pay-month counts are not additional salary amounts. Other unexplained
+    # numbers or several amount expressions make automatic recovery unsafe.
+    clean = re.sub(r"\d+(?:\s*[-–—~～至]\s*\d+)?\s*薪", "", text)
+    ranges = list(_PAY_RANGE.finditer(clean))
+    if len(ranges) > 1:
+        return None
+    if ranges:
+        match = ranges[0]
+        outside = clean[:match.start()] + clean[match.end():]
+        if re.search(r"\d", outside):
+            return None
+        left, left_unit, right, right_unit = match.groups()
+        units = {'k': 1000, '千': 1000, '万': 10000, '元': 1}
+        lower = float(left.replace(',', '')) * units[(left_unit or right_unit).lower()]
+        upper = float(right.replace(',', '')) * units[right_unit.lower()]
+        return (lower, upper) if number(lower) and number(upper) and lower <= upper else None
+    amounts = list(_PAY_AMOUNT.finditer(clean))
+    if len(amounts) != 1:
+        return None
+    match = amounts[0]
+    if re.search(r"\d", clean[:match.start()] + clean[match.end():]):
+        return None
+    amount = float(match[1].replace(',', '')) * {'k': 1000, '千': 1000, '万': 10000, '元': 1}[match[2].lower()]
+    if not number(amount):
+        return None
+    suffix = clean[match.end():].strip()
+    lower = bool(re.match(r"(?:以上|及以上|起|\+)", suffix))
+    upper = bool(re.match(r"(?:以下|及以下|以内)", suffix))
+    if lower and upper:
+        return None
+    return (amount, None) if lower else (None, amount) if upper else (amount, amount)
+
+
+def normalize_job(job):
+    """Return a copy; raw text and any explicitly collected salary values win."""
+    result = copy.deepcopy(job)
+    salary = result.get('salary', {})
+    if isinstance(salary, dict) and salary.get('min') is None and salary.get('max') is None and isinstance(salary.get('text'), str):
+        amounts = salary_amounts(salary['text'])
+        if amounts is not None:
+            salary['min'], salary['max'] = amounts
+    return result
+
+
+def salary_has_number(text):
+    clean = re.sub(r"\d+(?:\s*[-–—~～至]\s*\d+)?\s*薪", "", text)
+    clean = re.sub(r"(?:招聘人数\s*[:：]?\s*\d+\s*人?|(?:招聘|招)\s*\d+\s*人|20\d{2}\s*届)", "", clean)
+    return bool(re.search(r"\d", clean))
+
+
 def validate_run(run):
     require(isinstance(run, dict), "运行文件必须为对象")
     require(run.get("schema_version") == 1, "仅支持运行 schema_version=1")
@@ -192,16 +256,29 @@ def evaluate(j, p, today):
     s, rule = j["salary"], p["salary"]
     values = [s["min"], s["max"]]
     known = any(v is not None for v in values)
+    has_threshold = rule["min_lower_monthly"] > 0 or rule["min_upper_monthly"] > 0
     if known and not proof(e.get("salary")):
         pending.append("数值薪资缺来源证据")
     elif not known:
-        if not rule["allow_unknown"]:
+        if salary_has_number(s['text']):
+            if has_threshold:
+                pending.append("薪资原文含金额但结构化范围不明确，需核实对应岗位及计薪周期")
+            else:
+                notes.append("薪资原文含金额，范围或计薪周期未核实；本轮未设置薪资门槛")
+        elif not rule["allow_unknown"]:
             rejected.append("画像不接受面议或未披露薪资")
         else:
-            notes.append("薪资无可比较数值，未证明达到薪资门槛")
+            notes.append("薪资无可比较数值，未证明达到薪资门槛" if has_threshold else "薪资未披露或面议；本轮未设置薪资门槛")
     elif s["currency"].upper() != rule["currency"].upper() or s["period"] not in ("month", "year"):
-        if rule["min_lower_monthly"] > 0 or rule["min_upper_monthly"] > 0:
+        if has_threshold:
             pending.append("币种或计薪周期不可直接与月薪门槛比较")
+        else:
+            if s['currency'].upper() != rule['currency'].upper():
+                notes.append(f"薪资币种为 {s['currency']}，未换算为 {rule['currency']}；本轮未设置薪资门槛")
+            if s['period'] == 'unknown':
+                notes.append("薪资金额已披露，计薪周期未知；本轮未设置薪资门槛")
+            elif s['period'] in ('day', 'hour'):
+                notes.append("薪资按日或小时披露，未换算月薪；本轮未设置薪资门槛")
     else:
         divisor = (s.get("months") or 12) if s["period"] == "year" else 1
         lower = s["min"] / divisor if s["min"] is not None else None
@@ -248,7 +325,7 @@ def check(run):
             validate_job(job)
             require(job["id"] not in ids, "id 重复；合并证据或使用不同来源ID")
             ids.add(job["id"])
-            valid.append(job)
+            valid.append(normalize_job(job))
         except (ValueError, TypeError) as exc:
             result["errors"].append(f"jobs[{index}]: {exc}")
     records, result['duplicates'] = job_facts.consolidate(valid)
@@ -270,6 +347,51 @@ def link(address, label="来源"):
     return report_format.link(address, label)
 
 
+def compact_detail(detail):
+    """Drop generic non-disclosure wording; retain status, scope and source."""
+    if detail is None:
+        return None
+    result = copy.deepcopy(detail)
+    for observation in result.get('observations', [result]):
+        if observation.get('status') == 'not_disclosed' and observation['text'].strip().rstrip('。') in {
+            '未披露', '未提供', '所查岗位页未披露', '岗位页未披露', '所查页面未披露', '已查未披露',
+        }:
+            observation['text'] = ''
+    return result
+
+
+def repeated_profile_notes(kept, jobs):
+    groups = {}
+    for item in kept:
+        evidence = jobs[item['id']].get('evidence', {}).get('profile_match')
+        if proof(evidence):
+            groups.setdefault(evidence['note'].strip(), []).append(item['id'])
+    return {note: index for index, note in enumerate(sorted(note for note, ids in groups.items() if len(ids) > 1), 1)}
+
+
+def common_job_notes(kept):
+    generic = {
+        '当前开放状态未独立确认', '薪资未披露或面议；本轮未设置薪资门槛',
+        '薪资无可比较数值，未证明达到薪资门槛',
+        '薪资金额已披露，计薪周期未知；本轮未设置薪资门槛',
+        '薪资原文含金额，范围或计薪周期未核实；本轮未设置薪资门槛',
+    }
+    groups = {}
+    for index, item in enumerate(kept, 1):
+        for note in item['notes']:
+            if note in generic:
+                groups.setdefault(note, []).append(f'{index:02d}')
+    return {note: numbers for note, numbers in groups.items() if len(numbers) > 1}
+
+
+def already_in_duties(job, evidence):
+    detail = job.get('details', {}).get('duties', {})
+    return any(observation.get('status', 'verified') == 'verified'
+               and norm(observation.get('text', '').rstrip('。')) == norm(evidence['note'].rstrip('。'))
+               and evidence['url'] in observation.get('sources', [])
+               for observation in detail.get('observations', [detail]))
+
+
 def render(run, result):
     p, today = run["profile"], iso(run["as_of"])
     jobs = {j["id"]: j for j in run["jobs"]}
@@ -277,10 +399,13 @@ def render(run, result):
     kept = result["kept"]
     company_count = len({norm(jobs[x["id"]]["company"]) for x in kept})
     adjacent = sum(jobs[x["id"]]["relevance"] == "adjacent" for x in kept)
+    salary_rule = p['salary']
+    salary_summary = (f"{esc(salary_rule['currency'])} 月薪下限 ≥ {salary_rule['min_lower_monthly']:g}，上限 ≥ {salary_rule['min_upper_monthly']:g}"
+                      if salary_rule['min_lower_monthly'] > 0 or salary_rule['min_upper_monthly'] > 0 else '本轮不设薪资门槛')
     out = [f"# 岗位报告：{esc(p['name'])}", "<!-- findjob:report v2 -->", "", f"检索基准日：{today}。本轮纳入 **{len(kept)} 条岗位、{company_count} 家单位**，其中相关方向 {adjacent} 条；不代表全网总量。", "",
            "## 第一部分：岗位简表", "",
            f"时间：发布自 {back_months(today, p['freshness']['published_months'])} 起，{'且' if p['freshness'].get('mode', 'any') == 'all' else '或'}刷新自 {back_months(today, p['freshness']['refreshed_months'])} 起，均截至 {today}。",
-           f"薪资：{esc(p['salary']['currency'])} 月薪下限 ≥ {p['salary']['min_lower_monthly']:g}，上限 ≥ {p['salary']['min_upper_monthly']:g}；允许未知：{'是' if p['salary']['allow_unknown'] else '否'}。",
+           f"薪资：{salary_summary}；允许未知：{'是' if p['salary']['allow_unknown'] else '否'}。",
            f"地点：{esc('、'.join(p['locations']) or '不限')}；排除游戏：{'是' if p['exclude_games'] else '否'}；排除猎头：{'是' if p['exclude_headhunters'] else '否'}。",
            f"其他硬条件：{esc('；'.join(p.get('hard_requirements', [])) or '无')}。", "",
            f"排除地点：{esc('、'.join(p.get('excluded_locations', [])) or '无')}；招聘类型：{esc('、'.join(p.get('employment_types', [])) or '不限')}；工作方式：{esc('、'.join(p.get('work_arrangements', [])) or '不限')}。",
@@ -296,6 +421,13 @@ def render(run, result):
     if not kept:
         out += ["", "本轮未采集到符合全部条件且证据足够的岗位。该结果不表示市场没有岗位；来源情况及未纳入原因见下文。"]
     out += ["", "## 第二部分：岗位详情", "", "以下为公开资料归纳。未披露/未核实不等于没有；个人评论不是司法结论。脚本检查不替代网页证据核实。"]
+    profile_notes = repeated_profile_notes(kept, jobs)
+    shared_notes = common_job_notes(kept)
+    for note, index in profile_notes.items():
+        out.append(f"- **画像匹配共用说明 {index}**：{report_format.sentence(note)}逐岗引用及来源见下文。")
+    for note, numbers in sorted(shared_notes.items()):
+        scope = '全部纳入岗位' if len(numbers) == len(kept) else '编号 ' + '、'.join(numbers)
+        out.append(f"- **共同口径（{scope}）**：{report_format.sentence(note)}")
     for i, item in enumerate(kept, 1):
         j, d = jobs[item["id"]], item["date"]
         out += ["", f"### {i:02d}｜{esc(j['company'])} — {esc(j['title'])}", "",
@@ -306,7 +438,7 @@ def render(run, result):
             out.append(f"- **截止日期**：{j['deadline']}。")
         for key, label in DETAILS.items():
             detail = j.get("details", {}).get(key)
-            out.append(report_format.detail_line(key, detail))
+            out.append(report_format.detail_line(key, compact_detail(detail)))
         discussions = j.get("discussions", [])
         out.append("- **岗位讨论及链接**：" + ("未取得可核实的对应讨论。" if not discussions else ""))
         for discussion in discussions:
@@ -314,9 +446,13 @@ def render(run, result):
         for key, label in (("relevance", "方向依据"), ("games", "业务依据"), ("recruiter", "招聘主体"), ("profile_match", "画像匹配"), ("salary", "薪资依据")):
             evidence = j.get("evidence", {}).get(key)
             if proof(evidence):
-                out.append(f"- **{label}**：{report_format.sentence(evidence['note'])}{link(evidence['url'])}")
-        if item["notes"]:
-            out.append("- **缺口/口径**：" + "；".join(esc(x) for x in item["notes"]) + "。")
+                if key == 'relevance' and already_in_duties(j, evidence):
+                    continue
+                note = f"见共用说明 {profile_notes[evidence['note'].strip()]}" if key == 'profile_match' and evidence['note'].strip() in profile_notes else evidence['note']
+                out.append(f"- **{label}**：{report_format.sentence(note)}{link(evidence['url'])}")
+        notes = [note for note in item['notes'] if note not in shared_notes]
+        if notes:
+            out.append("- **缺口/口径**：" + "；".join(esc(x) for x in notes) + "。")
     out += ["", "### 未纳入与去重", "", f"剔除 {len(result['excluded'])} 条；待核实 {len(result['pending'])} 条；重复 {len(result['duplicates'])} 条。以下不计入主表。"]
     for state, label in (("excluded", "剔除"), ("pending", "待核实"), ("duplicates", "重复")):
         for item in result[state]:
@@ -330,12 +466,12 @@ def render(run, result):
     out += ["", "### 检索覆盖与限制", "", f"实际搜索 {len(run['searches'])} 个 query，预算已预留 {run['reserved_queries']} / {p['budget']['queries']}；打开详情页不计搜索 query。预留额度不等于实际调用量。"]
     sources = {}
     for query in run["searches"]:
-        source = sources.setdefault(query["source"], {"success": 0, "no_matches": 0, "blocked": 0, "notes": []})
+        source = sources.setdefault(query["source"], {"success": 0, "no_matches": 0, "blocked": 0})
         source[query["outcome"]] += 1
-        if query.get("note"):
-            source["notes"].append(query["note"])
     for name, source in sources.items():
-        out.append(f"- {esc(name)}：成功采集查询 {source['success']}，无匹配查询 {source['no_matches']}，受阻查询 {source['blocked']}。" + esc("；".join(dict.fromkeys(source["notes"]))))
+        out.append(f"- {esc(name)}：成功采集查询 {source['success']}，无匹配查询 {source['no_matches']}，受阻查询 {source['blocked']}。")
+    if sources:
+        out.append('- 完整查询及过程备注保存在运行记录中；本报告保留来源统计与必要限制。')
     if not sources:
         out.append("- 本运行没有实际搜索日志；仅对已输入记录进行了筛选，不能宣称完成新一轮网络搜索。")
     out += ["- " + esc(note) for note in run.get("notes", [])]
@@ -368,7 +504,7 @@ def main(argv=None):
                 profile = merge(profile, load(args.overrides))
             validate_profile(profile)
             iso(args.as_of)
-            run = dict(schema_version=1, as_of=args.as_of, profile=profile, reserved_queries=0, searches=[], jobs=[], notes=[])
+            run = dict(schema_version=1, as_of=args.as_of, profile=profile, reserved_queries=0, searches=[], jobs=[], notes=[], status='in_progress', output=None)
             save(args.run, run, replace=False)
             print(f"Created: {Path(args.run).resolve()}")
             return 0

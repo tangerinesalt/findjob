@@ -37,7 +37,8 @@ def main():
     records = []
     for index in range(1, 11):
         a = job()
-        a.update(id=f'{index:02d}-a', company=f'合成公司{index}', job_url=f'https://example.org/jobs/{index}')
+        a.update(id=f'{index:02d}-a', company=f'合成公司{index}', job_url=f'https://example.org/jobs/{index}',
+                 identity_key=f'confirmed-synthetic-job-{index}')
         a['details']['benefits'] = {'text': '五险一金', 'sources': [a['job_url']]}
         b = copy.deepcopy(a)
         b.update(id=f'{index:02d}-b', job_url=f'https://other.example.org/jobs/{index}')

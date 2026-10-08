@@ -100,6 +100,96 @@ class Rules(unittest.TestCase):
         j["salary"].update(min=5000, max=None)
         self.assertEqual(self.state(j), "excluded")
 
+    def test_disclosed_salary_numbers_survive_unknown_period(self):
+        cases = (
+            ('8–10K，计薪周期未明', 8000, 10000),
+            ('16.7–33.3K，计薪周期未明', 16700, 33300),
+            ('16000–24000元，计薪周期未明', 16000, 24000),
+            ('8000–10000元，计薪周期未明', 8000, 10000),
+            ('20000元以上，计薪周期未明', 20000, None),
+            ('实习、转正均10000元以上，计薪周期未明', 10000, None),
+        )
+        for text, lower, upper in cases:
+            with self.subTest(text=text):
+                j = job()
+                j['salary'].update(text=text, period='unknown', min=None, max=None)
+                before = copy.deepcopy(j)
+                result = module.check(run_record(j))
+                self.assertEqual(result['errors'], [])
+                self.assertEqual(len(result['pending']), 1)
+                salary = result['records'][0]['salary']
+                self.assertEqual((salary['min'], salary['max']), (lower, upper))
+                self.assertEqual(salary['period'], 'unknown')
+                self.assertEqual(salary['text'], text)
+                self.assertEqual(j, before)
+                self.assertEqual(self.state(j, {'salary': {'min_lower_monthly': 0, 'min_upper_monthly': 0}}), 'kept')
+
+    def test_salary_recovery_preserves_collected_period_and_partial_values(self):
+        for text, period, expected in (('20–30万/年，13薪', 'year', (200000, 300000)),
+                                       ('200–300元/天', 'day', (200, 300)),
+                                       ('50元/小时', 'hour', (50, 50)),
+                                       ('8,000–10,000元', 'unknown', (8000, 10000))):
+            with self.subTest(text=text):
+                j = job()
+                j['salary'].update(text=text, period=period, min=None, max=None)
+                salary = module.normalize_job(j)['salary']
+                self.assertEqual((salary['min'], salary['max']), expected)
+                self.assertEqual(salary['period'], period)
+                self.assertIsNone(salary['months'])
+        j = job()
+        j['salary'].update(text='8–10K', min=8000, max=None)
+        self.assertEqual(module.normalize_job(j)['salary'], j['salary'])
+
+    def test_complex_salary_stays_local_pending_without_guessing(self):
+        for text in ('正式6–8K/月；实习3–4K/月', '20–40K正文；标题10000元以上',
+                     '补贴1000元，工资面议', '底薪8000元加提成', '约为10000元',
+                     '奖金20K，工资另议', '8000–10000（单位未明）', '约10K',
+                     '小于10K', '低于10K', '大于10K', '高于10K', '≤10K',
+                     '岗位组年包30–50万', '10K起步', '不低于最低薪资10K',
+                     '8000元保底，上不封顶', '-10000元'):
+            with self.subTest(text=text):
+                j = job()
+                j['salary'].update(text=text, period='unknown', min=None, max=None)
+                self.assertEqual(module.normalize_job(j)['salary'], j['salary'])
+                good = job()
+                good.update(id='other', job_url='https://example.org/jobs/other', title='Senior Unity developer')
+                result = module.check(run_record(j, good))
+                self.assertEqual(result['errors'], [])
+                self.assertEqual([item['id'] for item in result['pending']], ['one'])
+                self.assertEqual([item['id'] for item in result['kept']], ['other'])
+
+    def test_non_amount_numbers_do_not_turn_negotiable_salary_into_amounts(self):
+        for text in ('面议；13–14薪', '面议；招聘2人', '面议（2027届）'):
+            with self.subTest(text=text):
+                j = job()
+                j['salary'].update(text=text, period='unknown', min=None, max=None)
+                self.assertEqual(self.state(j), 'kept')
+
+    def test_zero_threshold_keeps_foreign_daily_pay_with_conversion_note(self):
+        j = job()
+        j['salary'].update(text='USD 200–300/day', currency='USD', period='day', min=200, max=300)
+        run = run_record(j)
+        run['profile']['salary'].update(min_lower_monthly=0, min_upper_monthly=0)
+        result = module.check(run)
+        self.assertEqual(len(result['kept']), 1)
+        self.assertIn('薪资币种为 USD，未换算为 CNY；本轮未设置薪资门槛', result['kept'][0]['notes'])
+        self.assertIn('薪资按日或小时披露，未换算月薪；本轮未设置薪资门槛', result['kept'][0]['notes'])
+
+    def test_salary_recovery_needs_evidence_and_zero_threshold_hint_is_accurate(self):
+        j = job()
+        j['salary'].update(text='8–10K', period='unknown', min=None, max=None)
+        del j['evidence']['salary']
+        self.assertEqual(self.state(j), 'pending')
+        j['salary']['text'] = '面议'
+        run = run_record(j)
+        run['profile']['salary'].update(min_lower_monthly=0, min_upper_monthly=0)
+        result = module.check(run)
+        self.assertEqual(len(result['kept']), 1)
+        self.assertIn('薪资未披露或面议；本轮未设置薪资门槛', result['kept'][0]['notes'])
+        rendered = module.render(run, result)
+        self.assertIn('本轮不设薪资门槛', rendered)
+        self.assertNotIn('未证明达到薪资门槛', rendered)
+
     def test_foreign_daily_annual_pay(self):
         for update in ({"currency": "USD"}, {"period": "day"}, {"period": "hour"}):
             j = job()

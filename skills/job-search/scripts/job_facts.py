@@ -24,16 +24,29 @@ def unique(values):
     return [v for _, v in sorted({stable(v): v for v in values}.items())]
 
 
-def same_job(a, b):
+def distinct_job(a, b):
     # An explicit distinction beats a reused URL or matching display title.
     for field in ('requisition_id', 'team', 'identity_key'):
         if a.get(field) and b.get(field) and norm(a[field]) != norm(b[field]):
-            return False
-    identity = lambda j: tuple(norm(j[k]) for k in ('company', 'title', 'location'))
+            return True
+    return False
+
+
+def same_job(a, b):
+    if distinct_job(a, b):
+        return False
     if norm(a['company']) != norm(b['company']) or norm(a['location']) != norm(b['location']):
         return False
-    return (canonical(a['job_url']) == canonical(b['job_url']) or identity(a) == identity(b)
-            or bool(a.get('identity_key') and a.get('identity_key') == b.get('identity_key')))
+    # A common display title alone cannot distinguish separate vacancies.
+    confirmed_identity = any(a.get(field) and b.get(field) and norm(a[field]) == norm(b[field])
+                             for field in ('requisition_id', 'identity_key'))
+    return (confirmed_identity or (canonical(a['job_url']) == canonical(b['job_url'])
+                                   and norm(a['title']) == norm(b['title'])))
+
+
+def possible_duplicate(a, b):
+    return (not distinct_job(a, b) and not same_job(a, b)
+            and all(norm(a[key]) == norm(b[key]) for key in ('company', 'title', 'location')))
 
 
 def consolidate(records):
@@ -77,7 +90,10 @@ def consolidate(records):
             comparable = [(j, {k: s.get(k) for k in ('currency', 'period', 'min', 'max', 'months')}) for j, s in salaries]
             conflict('salary', comparable)
         result['dates'] = unique(d for j in group for d in j.get('dates', []))
-        result['notes'] = sorted({note for j in group for note in j.get('notes', [])})
+        related = [j for j in records if j not in group and any(possible_duplicate(j, other) for other in group)]
+        result['notes'] = sorted({note for j in group for note in j.get('notes', [])} | {
+            f"同公司、岗位和地点存在疑似重复来源，尚未确认属于同一招聘机会，分别保留：[{j['id']}]({j['job_url']})"
+            for j in related})
         result['discussions'] = unique(d for j in group for d in j.get('discussions', []))
         result['details'] = {}
         for field in sorted({k for j in group for k in j.get('details', {})}):
