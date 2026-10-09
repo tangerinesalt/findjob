@@ -5,11 +5,13 @@ Python 3.10+，仅标准库。以下 `<skill>` 指本 SKILL.md 所在目录，�
 ```text
 python -X utf8 "<skill>/scripts/job_report.py" init --profile "<skill>/references/unity-non-game.json" --as-of 2026-09-21 --run ".scratch/findjob/20260921-01/run.json"
 python -X utf8 "<skill>/scripts/job_report.py" budget --run ".scratch/findjob/20260921-01/run.json" --count 4
+python -X utf8 "<skill>/scripts/job_report.py" budget --run ".scratch/findjob/20260921-01/run.json" --bucket yupao --count 2
+python -X utf8 "<skill>/scripts/job_report.py" budget --run ".scratch/findjob/20260921-01/run.json" --bucket linkedin --count 2
 python -X utf8 "<skill>/scripts/job_report.py" check --run ".scratch/findjob/20260921-01/run.json"
 python -X utf8 "<skill>/scripts/job_report.py" render --run ".scratch/findjob/20260921-01/run.json" --output "岗位报告_20260921.md"
 ```
 
-日期是示例，执行时替换。init 不覆盖已有运行；继续时读取旧文件。render 默认不覆盖已有报告，要更新同一报告时显式加 `--replace`。画像支持 UTF-8 Markdown 或 JSON，运行仍为 UTF-8 JSON，可通过文件编辑工具更新；仅主代理写 run.json。`budget` 必须在搜索前预留，失败搜索也记入实际日志；并行分支总额度先预留，子代理不用此命令。账本不是对搜索工具的强制拦截器。
+日期是示例，执行时替换。init 不覆盖已有运行；继续时读取旧文件。新运行默认启用 [平台策略](platforms.md)，用户本次明确日期/预算要求优先；完全沿用原规则时给 init 加 `--no-platform-policy`。旧运行不自动迁移或加额。render 默认不覆盖已有报告，要更新同一报告时显式加 `--replace`。画像支持 UTF-8 Markdown 或 JSON，运行仍为 UTF-8 JSON，可通过文件编辑工具更新；仅主代理写 run.json。`budget` 必须在搜索前预留，缺省 `--bucket general`；失败搜索也记入实际日志，并行分支按池先预留，子代理不用此命令。账本不是对搜索工具的强制拦截器。
 
 ## 中文读写
 
@@ -29,13 +31,13 @@ v1 可选扩展：`target_roles`、`excluded_keywords`、`excluded_locations`、
 
 ## 运行 v1
 
-init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`。小批保存与完成状态用 [progress.md](progress.md) 的命令；无需另写临时保存脚本。
+init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`。启用平台策略的新运行还保存 `platform_policy`、`reserved_platform_queries`；准确结构与各池限制见 [platforms.md](platforms.md)。`reserved_queries` 仍只表示常规池预留，不含两平台额外池。小批保存与完成状态用 [progress.md](progress.md) 的命令；无需另写临时保存脚本。
 
-`searches` 每项：`{"query":"实际检索词","source":"web/官网等","phase":"discovery","outcome":"success","note":"简短结果"}`。
+`searches` 每项：`{"query":"实际检索词","source":"web/官网等","phase":"discovery","budget_bucket":"general","outcome":"success","note":"简短结果"}`。只有宿主实际使用 domains 限定时才把原列表记入可选 `domains` 字段。
 
 - phase 为 discovery 或 enrichment；outcome 为 success、no_matches 或 blocked。
 - no_matches 只指该查询未发现候选，不表示市场无岗位；blocked 说明验证码/网络/权限等原因。
-- 每个搜索 query 一项，页面打开不计 query。实际日志数不得超过 reserved_queries；总预留不超过预算；enrichment 实际数不得超过补充预算。
+- 每个搜索 query 一项，页面打开不计 query。budget_bucket 为 general/yupao/linkedin，省略按 general。每池实际数不得超过该池预留与上限，三池真实调用合计默认最多 70；enrichment 只能用 general 且仍包含在常规预算中。旧单池运行沿用原上限，不因新文档增加预算。
 - notes 为字符串数组，记录覆盖缺口、预算分配和中断后下一步。事实记录随批落盘；不要将完整网页、个人联系方式或简历复制进来。
 
 ## 岗位 v1
@@ -79,6 +81,7 @@ init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`�
 - status：open/unknown/closed；deadline 可省略或 null，日期为 YYYY-MM-DD。
 - relevance：core/adjacent/unrelated/unknown；games：yes/no/unknown；recruiter：employer/headhunter/anonymous/unknown；profile_match：yes/no/unknown。
 - dates.kind：published/refreshed/job_time/crawled。crawled 永远不证明招聘新鲜度；job_time 用刷新窗口。用来筛选的日期必须有短证据和有效网页 URL。截止日不是发布日期。
+- 可选 `relative_dates` 记录 LinkedIn 岗位正文相对时间，每项为 `{"text":"3天前","url":"https://www.linkedin.com/jobs/view/123","note":"正文时间","observed_at":"2026-10-09"}`；须保留原文、来源与实际观测日，不编造绝对发布日期。仅启用平台策略且已确认属于该 LinkedIn 岗位时生效，其他平台字段无效；判定与历史观测处理见 [platforms.md](platforms.md)。
 - salary.period：month/year/day/hour/unknown；currency 为原始币种。min/max 为元数值或 null，months 为明确的年发薪月数或 null。面议/未披露用 period=unknown，min=max=null，原文写在 text。披露金额但周期不明时保留 min/max，只将 period 记 unknown；不能把“8000–10000元”改成无金额，也不能擅自补 `/月`。已知任一数值必须提供 salary 证据。
 - evidence 为上述判断依据。缺失不等于通过；筛选输出“待核实”。证据 note 用改写的短描述，不抄整段内容。
 - details 允许 duties、requirements、benefits、work_time、overtime、insured、legal_risk；每项为 text 与 sources URL 列表。未取得就省略，脚本标未核实，不能填造假来源。

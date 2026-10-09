@@ -24,6 +24,25 @@ file_store = importlib.util.module_from_spec(_store_spec)
 _store_spec.loader.exec_module(file_store)
 write_json = file_store.save
 
+
+def inherited_platform_policy(content):
+    """Only reports that explicitly carry the policy opt follow-ups into it."""
+    markers = [line for line in content.splitlines() if line.startswith('<!-- findjob:platform-policy')]
+    if not markers:
+        return None
+    if len(markers) != 1:
+        raise ValueError('报告平台策略标记重复；先确认原清单策略')
+    match = re.fullmatch(r'<!-- findjob:platform-policy (\{.*\}) -->', markers[0])
+    if match is None:
+        raise ValueError('报告平台策略标记无效；不能静默丢失筛选例外')
+    policy = json.loads(match[1])
+    spec = importlib.util.spec_from_file_location('findjob_search_budget', Path(__file__).with_name('search_budget.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    # Validate only the policy through an empty ordinary follow-up ledger.
+    module.validate({'mode': 'refresh', 'platform_policy': policy, 'budget': {'queries': 0}, 'searches': []})
+    return policy
+
 def read(path):
     return Path(path).read_text(encoding="utf-8-sig")
 
@@ -163,6 +182,7 @@ def prepare(workspace, mode, as_of, report=None, context_report=None, queries=No
     selected = resolve(workspace, report, context_report)
     source = Path(selected["report"])
     raw = source.read_bytes()
+    policy = inherited_platform_policy(raw.decode('utf-8-sig'))
     parent = workspace / ".scratch" / "findjob"
     parent.mkdir(parents=True, exist_ok=True)
     task_dir = Path(tempfile.mkdtemp(prefix=f"{mode}-{as_of}-", dir=parent))
@@ -173,6 +193,8 @@ def prepare(workspace, mode, as_of, report=None, context_report=None, queries=No
                 selected_by=selected["selected_by"], warnings=selected["warnings"],
                 status="draft", output=None, searches=[], notes=[],
                 budget={"queries": queries if queries is not None else 12 if mode == "enrich" else 60, "per_job_minutes": 3})
+    if policy is not None:
+        task['platform_policy'] = policy
     write_json(task_dir / "task.json", task)
     return {**selected, "task": str(task_dir / "task.json"), "working": str(task_dir / "working.md"),
             "snapshot": str(task_dir / "source.md")}
@@ -188,7 +210,12 @@ def publish(task_path, summary):
     working = task_path.parent / "working.md"
     if not is_report(working):
         raise ValueError("工作稿缺少岗位清单结构，不能交付。")
-    findings = report_format.check(read(working))
+    working_content = read(working)
+    if inherited_platform_policy(working_content) != task.get('platform_policy'):
+        raise ValueError('工作稿平台策略与本轮任务不一致；不得丢失或静默修改原筛选例外')
+    if task.get('platform_policy') and not any(line.startswith('平台例外：') for line in working_content.splitlines()):
+        raise ValueError('工作稿缺少平台例外说明')
+    findings = report_format.check(working_content)
     if findings['errors']:
         raise ValueError('；'.join(findings['errors']))
     source = Path(task["source"])

@@ -28,6 +28,12 @@ _facts_spec.loader.exec_module(job_facts)
 _format_spec = importlib.util.spec_from_file_location('findjob_report_format', Path(__file__).with_name('report_format.py'))
 report_format = importlib.util.module_from_spec(_format_spec)
 _format_spec.loader.exec_module(report_format)
+_budget_spec = importlib.util.spec_from_file_location('findjob_search_budget', Path(__file__).with_name('search_budget.py'))
+search_budget = importlib.util.module_from_spec(_budget_spec)
+_budget_spec.loader.exec_module(search_budget)
+_linkedin_spec = importlib.util.spec_from_file_location('findjob_linkedin_dates', Path(__file__).with_name('linkedin_dates.py'))
+linkedin_dates = importlib.util.module_from_spec(_linkedin_spec)
+_linkedin_spec.loader.exec_module(linkedin_dates)
 
 
 DETAILS = report_format.DETAILS
@@ -150,10 +156,11 @@ def validate_run(run):
     require(run.get("schema_version") == 1, "仅支持运行 schema_version=1")
     iso(run.get("as_of"))
     validate_profile(run.get("profile"))
-    reserved = run.get("reserved_queries")
-    require(type(reserved) is int and 0 <= reserved <= run["profile"]["budget"]["queries"], "预留额度超过预算或字段无效")
+    reserved = run.get('reserved_queries')
+    require(type(reserved) is int and 0 <= reserved <= run['profile']['budget']['queries'], '预留额度超过预算或字段无效')
+    search_budget.validate(run)
     searches = run.get("searches")
-    require(isinstance(searches, list) and len(searches) <= reserved, "实际 query 数超过预留额度或 searches 无效")
+    require(isinstance(searches, list), "searches 无效")
     for item in searches:
         require(isinstance(item, dict), "查询日志必须为对象")
         require(all(isinstance(item.get(k), str) and item[k].strip() for k in ("query", "source")), "查询日志缺 query/source")
@@ -197,6 +204,7 @@ def validate_job(j):
     for d in dates:
         require(isinstance(d, dict) and d.get("kind") in set(KINDS) | {"crawled"}, "日期类型无效")
         iso(d.get("value"))
+    linkedin_dates.validate_relative(j)
     details = j.get("details", {})
     require(isinstance(details, dict) and details.keys() <= DETAILS.keys(), "details 有未知字段")
     for key, detail in details.items():
@@ -207,7 +215,7 @@ def validate_job(j):
         require(isinstance(item, dict) and url(item.get("url")) and all(isinstance(item.get(k), str) and item[k].strip() for k in ("text", "date", "scope")), "讨论缺 text/url/date/scope")
 
 
-def evaluate(j, p, today):
+def evaluate(j, p, today, platform_policy=None):
     rejected, pending, notes = [], [], list(j.get("notes", []))
     e = j.get("evidence", {})
     if j["status"] == "closed" or j.get("deadline") and iso(j["deadline"]) < today:
@@ -233,26 +241,33 @@ def evaluate(j, p, today):
             pending.append(f"缺少 {key} 的可核实证据")
     if p["exclude_games"] and (j["games"] == "unknown" or not proof(e.get("games"))):
         pending.append("非游戏业务未核实")
-    dates = [d for d in j.get("dates", []) if d["kind"] in KINDS and proof(d)]
-    current = [d for d in dates if back_months(today, p["freshness"]["published_months" if d["kind"] == "published" else "refreshed_months"]) <= iso(d["value"]) <= today]
-    if any(iso(d["value"]) > today for d in dates):
-        pending.append("岗位证据含未来日期，需解决冲突")
-    if not dates:
-        pending.append("缺少岗位发布/刷新时间证据")
-    elif not current and not pending:
-        rejected.append("岗位时间超出窗口")
-    elif not current:
-        pending.append("未核实窗口内岗位时间")
-    if p['freshness'].get('mode', 'any') == 'all':
-        for kinds, label in (({'published'}, '发布'), ({'refreshed'}, '刷新')):
-            typed = [d for d in dates if d['kind'] in kinds]
-            if not typed:
-                pending.append(f'时间条件要求同时满足，缺少明确{label}日期')
-            elif not any(d in current for d in typed):
-                if all(iso(d['value']) <= today for d in typed):
-                    rejected.append(f'{label}日期超出窗口')
-                else:
-                    pending.append(f'{label}日期未核实')
+    date_policy = linkedin_dates.evaluate(j, today, platform_policy)
+    current = []
+    if date_policy is not None:
+        rejected.extend(date_policy['rejected'])
+        pending.extend(date_policy['pending'])
+        notes.extend(date_policy['notes'])
+    else:
+        dates = [d for d in j.get("dates", []) if d["kind"] in KINDS and proof(d)]
+        current = [d for d in dates if back_months(today, p["freshness"]["published_months" if d["kind"] == "published" else "refreshed_months"]) <= iso(d["value"]) <= today]
+        if any(iso(d["value"]) > today for d in dates):
+            pending.append("岗位证据含未来日期，需解决冲突")
+        if not dates:
+            pending.append("缺少岗位发布/刷新时间证据")
+        elif not current and not pending:
+            rejected.append("岗位时间超出窗口")
+        elif not current:
+            pending.append("未核实窗口内岗位时间")
+        if p['freshness'].get('mode', 'any') == 'all':
+            for kinds, label in (({'published'}, '发布'), ({'refreshed'}, '刷新')):
+                typed = [d for d in dates if d['kind'] in kinds]
+                if not typed:
+                    pending.append(f'时间条件要求同时满足，缺少明确{label}日期')
+                elif not any(d in current for d in typed):
+                    if all(iso(d['value']) <= today for d in typed):
+                        rejected.append(f'{label}日期超出窗口')
+                    else:
+                        pending.append(f'{label}日期未核实')
     s, rule = j["salary"], p["salary"]
     values = [s["min"], s["max"]]
     known = any(v is not None for v in values)
@@ -291,7 +306,7 @@ def evaluate(j, p, today):
             notes.append("薪资范围未完整披露，仅检查已知边界")
     if j["status"] == "unknown":
         notes.append("当前开放状态未独立确认")
-    chosen = max(current, key=lambda d: (d['value'], d['kind'], d['url'], d['note'])) if current else None
+    chosen = date_policy['date'] if date_policy is not None else max(current, key=lambda d: (d['value'], d['kind'], d['url'], d['note'])) if current else None
     conflicts = j.get('merge_conflicts', [])
     core_conflicts = [c for c in conflicts if c['field'] not in ('education', 'experience')]
     for conflict in conflicts:
@@ -301,7 +316,10 @@ def evaluate(j, p, today):
     state = "pending" if core_conflicts else "excluded" if rejected else "pending" if pending else "kept"
     if core_conflicts:
         rejected = []
-    return {"id": j["id"], "state": state, "reasons": rejected or pending, "date": chosen, "notes": list(dict.fromkeys(notes))}
+    result = {"id": j["id"], "state": state, "reasons": rejected or pending, "date": chosen, "notes": list(dict.fromkeys(notes))}
+    if date_policy is not None:
+        result.update(date_display=date_policy['display'], date_evidence=date_policy['evidence'], date_exception=date_policy['exception'])
+    return result
 
 
 def canonical(value):
@@ -331,7 +349,7 @@ def check(run):
     records, result['duplicates'] = job_facts.consolidate(valid)
     result['records'] = records
     for job in records:
-        item = evaluate(job, run['profile'], iso(run['as_of']))
+        item = evaluate(job, run['profile'], iso(run['as_of']), run.get('platform_policy'))
         result[item['state']].append(item)
     identities = {j['id']: tuple(norm(j[k]) for k in ('company', 'title', 'location')) + (canonical(j['job_url']), j['id']) for j in records}
     for state in ('kept', 'excluded', 'pending'):
@@ -345,6 +363,13 @@ def esc(value):
 
 def link(address, label="来源"):
     return report_format.link(address, label)
+
+
+def date_display(item):
+    if item.get('date_display'):
+        return item['date_display']
+    value = item.get('date')
+    return f"{value['value']}（{KINDS[value['kind']]}）" if value else '日期未核实'
 
 
 def compact_detail(detail):
@@ -413,10 +438,17 @@ def render(run, result):
            f"排序偏好：{esc('；'.join(p.get('preferences', [])) or '无')}。默认按岗位日期倒序，同日按公司/岗位/地点/链接稳定排序；偏好未自动评分。", "",
             report_format.table_line(report_format.HEADERS),
            "|---|---|---|---|---|---|---|---|"]
+    if run.get('platform_policy'):
+        policy = run['platform_policy']
+        out.insert(2, '<!-- findjob:platform-policy ' + json.dumps(policy, ensure_ascii=False, sort_keys=True, separators=(',', ':')) + ' -->')
+        index = next(i for i, line in enumerate(out) if line.startswith('薪资：'))
+        age_rule = f"LinkedIn按岗位正文相对时间筛选，满{policy['linkedin_age_months']}个月排除，日期未知允许保留并标注" if policy['linkedin_allow_unknown'] and policy['linkedin_age_months'] > 0 else 'LinkedIn日期例外未启用'
+        extras = policy.get('extra_queries', {'yupao': 0, 'linkedin': 0})
+        out.insert(index, f"平台例外：{age_rule}；其他平台沿用上述时间条件。新岗位搜索额外额度：鱼泡最多{extras['yupao']}次，LinkedIn最多{extras['linkedin']}次；复核和补充不新增此额度。")
     for i, item in enumerate(kept, 1):
         j, d = jobs[item["id"]], item["date"]
         title = j["title"] + ("【相关方向】" if j["relevance"] == "adjacent" else "")
-        cells = [f"{i:02d}", j["company"], title, j["location"], j["salary"]["text"], f"{j.get('education') or '未披露'} / {j.get('experience') or '未披露'}", f"{d['value']}（{KINDS[d['kind']]}）"]
+        cells = [f"{i:02d}", j["company"], title, j["location"], j["salary"]["text"], f"{j.get('education') or '未披露'} / {j.get('experience') or '未披露'}", date_display(item)]
         out.append("| " + " | ".join(esc(x) for x in cells) + " | " + link(j["job_url"], "岗位") + " |")
     if not kept:
         out += ["", "本轮未采集到符合全部条件且证据足够的岗位。该结果不表示市场没有岗位；来源情况及未纳入原因见下文。"]
@@ -430,10 +462,14 @@ def render(run, result):
         out.append(f"- **共同口径（{scope}）**：{report_format.sentence(note)}")
     for i, item in enumerate(kept, 1):
         j, d = jobs[item["id"]], item["date"]
+        date_proof = item.get('date_evidence') or d
+        date_source = report_format.sentence(date_proof['note']) + link(date_proof['url']) if date_proof else '日期未披露或无法判断，按LinkedIn日期例外保留；未认定为近期已核实岗位。'
+        if item.get('date_exception') and date_proof and date_proof.get('text') and date_proof.get('observed_at'):
+            date_source = report_format.sentence(f"页面原文：{date_proof['text']}；{date_proof['observed_at']}观测") + date_source
         out += ["", f"### {i:02d}｜{esc(j['company'])} — {esc(j['title'])}", "",
-                f"- **基本信息**：{esc(j['location'])}；{esc(j['salary']['text'])}；{esc(j.get('education') or '未披露')} / {esc(j.get('experience') or '未披露')}；{d['value']}（{KINDS[d['kind']]}）。",
+                f"- **基本信息**：{esc(j['location'])}；{esc(j['salary']['text'])}；{esc(j.get('education') or '未披露')} / {esc(j.get('experience') or '未披露')}；{esc(date_display(item))}。",
                 f"- **招聘链接**：{link(j['job_url'], '职位详情')}。",
-                f"- **日期依据**：{report_format.sentence(d['note'])}{link(d['url'])}"]
+                f"- **日期依据**：{date_source}"]
         if j.get("deadline"):
             out.append(f"- **截止日期**：{j['deadline']}。")
         for key, label in DETAILS.items():
@@ -464,6 +500,12 @@ def render(run, result):
             for conflict in j.get('merge_conflicts', []):
                 out.append('  - ' + esc(conflict['field']) + ' 来源冲突：' + '；'.join(esc(v['value']) + ' ' + link(v['url']) for v in conflict['values']))
     out += ["", "### 检索覆盖与限制", "", f"实际搜索 {len(run['searches'])} 个 query，预算已预留 {run['reserved_queries']} / {p['budget']['queries']}；打开详情页不计搜索 query。预留额度不等于实际调用量。"]
+    if run.get('platform_policy'):
+        usage = search_budget.summary(run)
+        pools = usage['pools']
+        out[-1] = f"实际搜索 {usage['total']['used']} 个 query，实际总上限 {usage['total']['limit']}；常规池实际/预留/上限 {pools['general']['used']}/{pools['general']['reserved']}/{pools['general']['limit']}，鱼泡 {pools['yupao']['used']}/{pools['yupao']['reserved']}/{pools['yupao']['limit']}，LinkedIn {pools['linkedin']['used']}/{pools['linkedin']['reserved']}/{pools['linkedin']['limit']}。页面读取另记，不占query；预留不等于实际调用。"
+        exception_count = sum(item.get('date_exception', False) for item in kept)
+        out.append(f"- LinkedIn日期例外纳入 {exception_count} 条，按页面相对时间或日期未知政策保留，未补造绝对岗位日期。")
     sources = {}
     for query in run["searches"]:
         source = sources.setdefault(query["source"], {"success": 0, "no_matches": 0, "blocked": 0})
@@ -486,9 +528,11 @@ def main(argv=None):
     init.add_argument("--overrides")
     init.add_argument("--as-of", required=True)
     init.add_argument("--run", required=True)
+    init.add_argument('--no-platform-policy', action='store_true', help='关闭本轮两平台专用预算及LinkedIn日期例外')
     budget = commands.add_parser("budget", help="单写者预留搜索额度；不执行搜索")
     budget.add_argument("--run", required=True)
     budget.add_argument("--count", type=int, required=True)
+    budget.add_argument('--bucket', choices=('general', 'yupao', 'linkedin'), default='general')
     verify = commands.add_parser("check", help="检查及筛选事实记录")
     verify.add_argument("--run", required=True)
     verify.add_argument('--full', action='store_true', help='包含合并后的完整证据；默认仅输出判断')
@@ -505,6 +549,8 @@ def main(argv=None):
             validate_profile(profile)
             iso(args.as_of)
             run = dict(schema_version=1, as_of=args.as_of, profile=profile, reserved_queries=0, searches=[], jobs=[], notes=[], status='in_progress', output=None)
+            if not args.no_platform_policy:
+                run.update(platform_policy=search_budget.default_policy(), reserved_platform_queries={'yupao': 0, 'linkedin': 0})
             save(args.run, run, replace=False)
             print(f"Created: {Path(args.run).resolve()}")
             return 0
@@ -512,11 +558,13 @@ def main(argv=None):
         if args.command == "budget":
             validate_run(run)
             require(args.count > 0, "预留 query 数必须大于零")
-            total = run["reserved_queries"] + args.count
-            require(total <= run["profile"]["budget"]["queries"], "预算不足；未修改运行文件")
-            run["reserved_queries"] = total
+            require(run.get('status') != 'complete', '已完成任务不能追加预留；新一轮需新任务')
+            usage = search_budget.reserve(run, args.count, args.bucket)
             save(args.run, run)
-            print(json.dumps({"reserved_queries": total, "remaining": run["profile"]["budget"]["queries"] - total}))
+            response = {'reserved_queries': run['reserved_queries'], 'remaining': run['profile']['budget']['queries'] - run['reserved_queries']}
+            if run.get('platform_policy'):
+                response.update(bucket=args.bucket, query_budget=usage)
+            print(json.dumps(response, ensure_ascii=False))
             return 0
         result = check(run)
         if args.command == "check" or result["errors"]:

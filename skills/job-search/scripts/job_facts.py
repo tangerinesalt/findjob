@@ -90,6 +90,8 @@ def consolidate(records):
             comparable = [(j, {k: s.get(k) for k in ('currency', 'period', 'min', 'max', 'months')}) for j, s in salaries]
             conflict('salary', comparable)
         result['dates'] = unique(d for j in group for d in j.get('dates', []))
+        if any('relative_dates' in j for j in group):
+            result['relative_dates'] = unique(d for j in group for d in j.get('relative_dates', []))
         related = [j for j in records if j not in group and any(possible_duplicate(j, other) for other in group)]
         result['notes'] = sorted({note for j in group for note in j.get('notes', [])} | {
             f"同公司、岗位和地点存在疑似重复来源，尚未确认属于同一招聘机会，分别保留：[{j['id']}]({j['job_url']})"

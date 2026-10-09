@@ -13,13 +13,13 @@ python -X utf8 "<search-skill>/scripts/run_state.py" record --file "<账本>" --
 
 本批 JSON 可包含 `batch_id` 及 `jobs/searches/accesses/notes`；数组沿用现有岗位、调用和短说明格式。jobs 中同 id 的记录更新已提供字段，保留未提供字段，嵌套对象递归合并；显式提供的数组整体替换，不自动追加。相同 batch_id 且内容相同的重试不重复写入；同 ID 不同内容会拒绝，新的实际调用或修正批次使用新 ID。search 的 run.json 可保存 jobs；follow-up 的 task.json 仅保存 searches/accesses/notes，岗位修改仍以 working.md/patch 为准，不重建整份 JSON。
 
-查询事件沿用 query/source/outcome/note；可选 phase、direction、new_jobs、new_fields、event_id。页面访问用 url/outcome/note，可选 event_id。event_id 用于中断恢复时避免重复补记同一调用；同词再次实际搜索是新调用，仍要计数。脚本只记录，不代替联网调用，也不能自动拦截工具。
+查询事件沿用 query/source/outcome/note；记录 budget_bucket（省略为 general），可选 phase、domains、direction、new_jobs、new_fields、event_id。两平台额外池的事件必须满足 [平台策略](platforms.md) 的域名和 discovery 限制。页面访问用 url/outcome/note，可选 event_id。event_id 用于中断恢复时避免重复补记同一调用；同词再次实际搜索是新调用，失败/无匹配也计数。脚本只记录，不代替联网调用，也不能自动拦截工具。
 
-status 输出预算、方向、最近查询、最近 notes 及结果位置，不打印全部岗位与证据。恢复时先读摘要，再读待处理岗位的相关材料；不要反复读完整报告或插件源码。新事实、冲突、下一步及时写入，脚本采用原子替换，避免写入一半损坏账本。
+status 输出预算、方向、最近查询、最近 notes 及结果位置，不打印全部岗位与证据。启用平台策略时分别显示各池与合计的 limit/reserved/used/remaining/available；remaining 是上限减实际，available 是已预留减实际，均不等于新增调用记录。恢复时先读摘要，再读待处理岗位的相关材料；保留原策略与各池计数，旧运行不自动加额。新事实、冲突、下一步及时写入，脚本采用原子替换，避免写入一半损坏账本。
 
 后续清单可用 `report_target.py inspect --task <task.json>` 只读条件与简表；指定 `--number 01 --field benefits --field work_time` 只看对应字段。省略 field 显示该岗位完整段落。出现冲突再扩读相关上下文，不需要每次输出整份清单。
 
-search 在搜索前仍用 budget 预留；follow-up 的 prepare 可传 `--queries N` 设置本轮预算，未传沿用 enrich 12 / refresh 60。实际调用与预留分别记，不重置原任务；已执行但尚未落盘的调用从可用工具记录恢复。
+search 在搜索前仍用 budget 按池预留；follow-up 的 prepare 可传 `--queries N` 设置本轮预算，未传沿用 enrich 12 / refresh 60。follow-up 只继承已交付报告的日期策略，两平台额外发现池始终为 0，不给 enrich/refresh 加额。实际调用与预留分别记，不重置原任务；已执行但尚未落盘的调用从可用工具记录恢复。
 
 ## 搜索完成
 

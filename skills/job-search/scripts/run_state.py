@@ -13,6 +13,10 @@ file_store = importlib.util.module_from_spec(_store_spec)
 _store_spec.loader.exec_module(file_store)
 read, write = file_store.load, file_store.save
 
+_budget_spec = importlib.util.spec_from_file_location('findjob_search_budget', Path(__file__).with_name('search_budget.py'))
+search_budget = importlib.util.module_from_spec(_budget_spec)
+_budget_spec.loader.exec_module(search_budget)
+
 
 def report_module():
     spec = importlib.util.spec_from_file_location('findjob_job_report', Path(__file__).with_name('job_report.py'))
@@ -44,15 +48,10 @@ def add_event(data, event, page=False):
         if key in event and (type(event[key]) is not int or event[key] < 0):
             raise ValueError('增量必须是非负整数')
     if not page:
-        budget = data.get('profile', {}).get('budget', data.get('budget', {}))
-        limit = min(budget['queries'], data.get('reserved_queries', budget['queries']))
-        if len(events) >= limit:
-            raise ValueError('查询额度不足；search 任务须先预留，follow-up 使用本轮预算')
         event.setdefault('phase', 'enrichment' if data.get('mode') == 'enrich' else 'discovery')
-        if event['phase'] not in ('discovery', 'enrichment'):
-            raise ValueError('phase 无效')
-        if event['phase'] == 'enrichment' and sum(e.get('phase') == 'enrichment' for e in events) >= budget.get('enrichment_queries', budget['queries']):
-            raise ValueError('补充查询额度不足')
+        search_budget.admit(data, event)
+    elif 'platform_policy' in data:
+        search_budget.validate(data)
     events.append(event)
     return True
 
@@ -132,6 +131,7 @@ def complete(path, output):
     data = read(path)
     if data.get('mode', 'search') != 'search':
         raise ValueError('补充/复核任务请使用 report_target.py publish')
+    search_budget.validate(data)
     destination = Path(output).resolve()
     if destination == Path(path).resolve():
         raise ValueError('报告不能覆盖运行 JSON')
@@ -154,7 +154,8 @@ def complete(path, output):
     if {key: value[1] for key, value in actual[3].items()} != {key: value[1] for key, value in expected[3].items()}:
         raise ValueError('报告主表与当前运行筛选结果不一致，请重新渲染或更新事实')
     prefixes = ('# 岗位报告：', '检索基准日：', '时间：', '薪资：', '地点：', '其他硬条件：',
-                '排除地点：', '岗位排除关键词：', '排序偏好：')
+                '排除地点：', '岗位排除关键词：', '排序偏好：', '平台例外：',
+                '<!-- findjob:platform-policy ')
     expected_conditions = [line for line in expected[0][:expected[1]] if line.startswith(prefixes)]
     actual_conditions = [line for line in actual[0][:actual[1]] if line.startswith(prefixes)]
     if actual_conditions != expected_conditions:
@@ -169,7 +170,7 @@ def status(path, limit=5):
     data = read(path)
     budget = data.get('profile', {}).get('budget', data.get('budget', {}))
     searches = data.get('searches', [])
-    return {'file': str(Path(path).resolve()), 'date': data.get('as_of', data.get('operation_date')),
+    result = {'file': str(Path(path).resolve()), 'date': data.get('as_of', data.get('operation_date')),
             'mode': data.get('mode', 'search'), 'status': data.get('status', 'in_progress'),
             'source': data.get('source'), 'budget': budget, 'queries': len(searches),
             'reserved_queries': data.get('reserved_queries'), 'remaining_queries': max(0, budget.get('queries', 0) - len(searches)),
@@ -179,6 +180,10 @@ def status(path, limit=5):
             'jobs_recorded': len(data.get('jobs', [])), 'recent_notes': data.get('notes', [])[-limit:] if limit else [],
             'batches_recorded': len(data.get('batches', {})),
             'output': data.get('output'), 'completed_at': data.get('completed_at')}
+    if 'platform_policy' in data:
+        result['query_budget'] = search_budget.summary(data)
+        result['remaining_queries'] = result['query_budget']['total']['remaining']
+    return result
 
 
 def main(argv=None):
