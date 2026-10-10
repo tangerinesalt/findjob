@@ -1,5 +1,7 @@
 # 数据和脚本用法
 
+新搜索init默认启用可选覆盖结构：`coverage={version:1,sources:[],source_note:"",stop_reason:""}`、`leads=[]`。线索导入、字段、状态、batch更新与收尾检查见 [coverage.md](coverage.md)。旧账本仍使用schema_version=1且不自动添加覆盖字段；覆盖记录不改变岗位判定或预算。
+
 Python 3.10+，仅标准库。以下 `<skill>` 指本 SKILL.md 所在目录，路径含空格时加引号。
 
 ```text

@@ -16,6 +16,9 @@ read, write = file_store.load, file_store.save
 _budget_spec = importlib.util.spec_from_file_location('findjob_search_budget', Path(__file__).with_name('search_budget.py'))
 search_budget = importlib.util.module_from_spec(_budget_spec)
 _budget_spec.loader.exec_module(search_budget)
+_leads_spec = importlib.util.spec_from_file_location('findjob_lead_tracking', Path(__file__).with_name('lead_tracking.py'))
+lead_tracking = importlib.util.module_from_spec(_leads_spec)
+_leads_spec.loader.exec_module(lead_tracking)
 
 
 def report_module():
@@ -65,6 +68,8 @@ def record(path, event, page=False):
     require_active(data)
     if not add_event(data, event, page):
         return {'recorded': False, 'reason': '该 event_id 已记录'}
+    if 'coverage' in data:
+        data['coverage']['stop_reason'] = ''
     write(path, data)
     return {'recorded': True, **counts(data)}
 
@@ -81,8 +86,8 @@ def batch(path, payload):
     """Commit one small batch atomically; an invalid batch leaves the ledger intact."""
     data = read(path)
     require_active(data)
-    if not isinstance(payload, dict) or set(payload) - {'batch_id', 'jobs', 'searches', 'accesses', 'notes'}:
-        raise ValueError('批次只接受 batch_id/jobs/searches/accesses/notes')
+    if not isinstance(payload, dict) or set(payload) - {'batch_id', 'jobs', 'searches', 'accesses', 'notes', 'leads', 'coverage'}:
+        raise ValueError('批次只接受 batch_id/jobs/searches/accesses/notes/leads/coverage')
     for key in ('jobs', 'searches', 'accesses', 'notes'):
         if not isinstance(payload.get(key, []), list):
             raise ValueError(f'{key} 须为数组')
@@ -119,11 +124,53 @@ def batch(path, payload):
     accesses_added = sum(add_event(data, event, page=True) for event in payload.get('accesses', []))
     notes = data.setdefault('notes', [])
     notes.extend(note for note in payload.get('notes', []) if note not in notes)
+    if 'leads' in payload or 'coverage' in payload:
+        lead_tracking.update(data, payload.get('leads', []), payload.get('coverage'))
+    if 'coverage' in data:
+        if (incoming or payload.get('leads') or searches_added or accesses_added) and 'stop_reason' not in (payload.get('coverage') or {}):
+            data['coverage']['stop_reason'] = ''
+        lead_tracking.validate(data)
     if batch_id:
         data.setdefault('batches', {})[batch_id] = digest
     write(path, data)
     return {'recorded': True, 'jobs_saved': len(incoming), 'searches_added': searches_added,
             'accesses_added': accesses_added, **counts(data)}
+
+
+def seed(path, source_path, include_pending=False):
+    """Import identities and provenance from a selected prior run, never old job facts."""
+    data = read(path)
+    require_active(data)
+    if 'coverage' not in data or data.get('mode', 'search') != 'search':
+        raise ValueError('seed 仅用于 init 新建的覆盖搜索任务')
+    source = Path(source_path).resolve()
+    if source == Path(path).resolve():
+        raise ValueError('不能把本轮账本作为历史来源')
+    previous = read(source)
+    module = report_module()
+    result = module.check(previous)
+    if result['errors']:
+        raise ValueError('来源账本无效：' + '；'.join(result['errors']))
+    if previous['as_of'] > data['as_of']:
+        raise ValueError('来源观测日晚于本轮基准日')
+    selected = {j['id']: s for s in ('kept', 'pending') if s == 'kept' or include_pending for j in result[s]}
+    existing = {l['id'] for l in data.get('leads', [])}
+    leads = []
+    for job in result['records']:
+        if job['id'] not in selected:
+            continue
+        lead = {'company': job['company'], 'title': job['title'], 'url': job['job_url']}
+        identity_key = job.get('identity_key') or job.get('requisition_id')
+        if identity_key:
+            lead['identity_key'] = identity_key
+        key = lead_tracking.lead_id(lead)
+        origin = {'source': str(source), 'observed_at': previous['as_of'], 'previous_state': selected[job['id']]}
+        if key in existing:
+            leads.append({'id': key, 'origins': [origin]})
+        else:
+            leads.append({**lead, 'id': key, 'state': 'queued', 'important': True, 'origins': [origin]})
+    return batch(path, {'leads': leads, 'coverage': {'sources': [
+        {'path': str(source), 'note': f"导入已纳入{'及待核实' if include_pending else ''}线索{len(leads)}条；旧事实仅供复核定位"}]}})
 
 
 def complete(path, output):
@@ -145,6 +192,7 @@ def complete(path, output):
     result = module.check(data)
     if result['errors']:
         raise ValueError('；'.join(result['errors']))
+    lead_tracking.validate(data, final=True)
     content = raw.decode('utf-8-sig')
     findings = module.report_format.check(content)
     if findings['errors'] or not findings['managed']:
@@ -160,6 +208,7 @@ def complete(path, output):
     actual_conditions = [line for line in actual[0][:actual[1]] if line.startswith(prefixes)]
     if actual_conditions != expected_conditions:
         raise ValueError('报告基准日或筛选条件与当前运行不一致，请使用当前结果')
+    lead_tracking.check_rendered(content, lead_tracking.render(data, result, module.esc, module.link))
     data.update(status='complete', output=str(destination), output_sha256=digest,
                 completed_at=datetime.now(timezone.utc).isoformat(timespec='seconds'))
     write(path, data)
@@ -183,6 +232,8 @@ def status(path, limit=5):
     if 'platform_policy' in data:
         result['query_budget'] = search_budget.summary(data)
         result['remaining_queries'] = result['query_budget']['total']['remaining']
+    if 'coverage' in data:
+        result['coverage'] = lead_tracking.summary(data)
     return result
 
 
@@ -198,7 +249,11 @@ def main(argv=None):
     add.add_argument('--page', action='store_true')
     bulk = commands.add_parser('batch', help='原子保存一批岗位、调用及说明')
     bulk.add_argument('--file', required=True)
-    bulk.add_argument('--batch', required=True, help='JSON file holding jobs/searches/accesses/notes')
+    bulk.add_argument('--batch', required=True, help='JSON file holding jobs/searches/accesses/notes/leads/coverage')
+    seeds = commands.add_parser('seed', help='从指定旧搜索账本导入已纳入线索，不复制旧事实')
+    seeds.add_argument('--file', required=True)
+    seeds.add_argument('--source-run', required=True)
+    seeds.add_argument('--include-pending', action='store_true')
     finish = commands.add_parser('complete', help='检查搜索报告并登记交付完成')
     finish.add_argument('--file', required=True)
     finish.add_argument('--output', required=True)
@@ -212,6 +267,8 @@ def main(argv=None):
             result = batch(args.file, read(args.batch))
         elif args.command == 'complete':
             result = complete(args.file, args.output)
+        elif args.command == 'seed':
+            result = seed(args.file, args.source_run, args.include_pending)
         else:
             result = record(args.file, read(args.event), args.page)
         print(json.dumps(result, ensure_ascii=False, indent=2))

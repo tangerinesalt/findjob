@@ -34,6 +34,9 @@ _budget_spec.loader.exec_module(search_budget)
 _linkedin_spec = importlib.util.spec_from_file_location('findjob_linkedin_dates', Path(__file__).with_name('linkedin_dates.py'))
 linkedin_dates = importlib.util.module_from_spec(_linkedin_spec)
 _linkedin_spec.loader.exec_module(linkedin_dates)
+_leads_spec = importlib.util.spec_from_file_location('findjob_lead_tracking', Path(__file__).with_name('lead_tracking.py'))
+lead_tracking = importlib.util.module_from_spec(_leads_spec)
+_leads_spec.loader.exec_module(lead_tracking)
 
 
 DETAILS = report_format.DETAILS
@@ -169,6 +172,7 @@ def validate_run(run):
         require(isinstance(item.get("note", ""), str), "查询 note 须为文本")
     require(sum(x["phase"] == "enrichment" for x in searches) <= run["profile"]["budget"]["enrichment_queries"], "补充搜索超出预算")
     require(isinstance(run.get("jobs"), list) and strings(run.get("notes", [])), "jobs/notes 类型无效")
+    lead_tracking.validate(run)
 
 
 def validate_job(j):
@@ -517,6 +521,7 @@ def render(run, result):
     if not sources:
         out.append("- 本运行没有实际搜索日志；仅对已输入记录进行了筛选，不能宣称完成新一轮网络搜索。")
     out += ["- " + esc(note) for note in run.get("notes", [])]
+    out += ['', *lead_tracking.render(run, result, esc, link)] if 'coverage' in run else []
     return "\n".join(out) + "\n"
 
 
@@ -549,6 +554,7 @@ def main(argv=None):
             validate_profile(profile)
             iso(args.as_of)
             run = dict(schema_version=1, as_of=args.as_of, profile=profile, reserved_queries=0, searches=[], jobs=[], notes=[], status='in_progress', output=None)
+            run.update(coverage=lead_tracking.initial(), leads=[])
             if not args.no_platform_policy:
                 run.update(platform_policy=search_budget.default_policy(), reserved_platform_queries={'yupao': 0, 'linkedin': 0})
             save(args.run, run, replace=False)

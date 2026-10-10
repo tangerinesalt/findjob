@@ -23,6 +23,8 @@ search 在搜索前仍用 budget 按池预留；follow-up 的 prepare 可传 `--
 
 ## 搜索完成
 
+新搜索按 [coverage.md](coverage.md) 续接相关线索。batch另接受leads数组与coverage更新；status显示线索状态和未处理的重要ID。它们不向旧任务自动迁移。全局收尾应审视其他路线和剩余额度，并记录停止理由；分支结束与格式检查通过不代表覆盖已核实。
+
 render 可以多次生成草稿，不自动结束采集。最终报告的筛选、格式及来源抽查通过后记录完成状态与实际交付路径：
 
 ```text
