@@ -17,4 +17,4 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -r requirements-dev.txt
       - run: python -X utf8 -m unittest discover -s tests -q
-      - run: python -X utf8 scripts/check_release.py
+      - run: python -X utf8 scripts/check_release.py --release
