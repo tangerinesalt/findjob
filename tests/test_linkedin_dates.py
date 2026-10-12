@@ -40,7 +40,7 @@ class LinkedInDates(unittest.TestCase):
         return module.evaluate(value, today, POLICY)
 
     def test_exception_requires_explicit_versioned_policy(self):
-        for policy in (None, {}, {"version": 1}, {**POLICY, "version": 2},
+        for policy in (None, {}, {"version": 1}, {**POLICY, "version": 99},
                        {**POLICY, "linkedin_allow_unknown": False},
                        {**POLICY, "linkedin_age_months": 0},
                        {**POLICY, "linkedin_age_months": True}):

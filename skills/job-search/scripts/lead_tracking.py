@@ -173,7 +173,7 @@ def render(run, result, esc, link):
            '以下为该次搜索的处置记录；后续补充或复核以更新后的岗位主表及复核记录为准。',
            '线索去向不计入合格岗位数量；本轮调用关联仅供追溯，不自动证明证据真实。', '']
     for source in run['coverage']['sources']:
-        out.append(f"- 对照来源：{esc(source['path'])}；{esc(source['note'])}")
+        out.append(f"- 对照来源：{esc(source['path'].replace(chr(92), '/').rsplit('/', 1)[-1])}；{esc(source['note'])}")
     if run['coverage'].get('source_note'):
         out.append('- 来源说明：' + esc(run['coverage']['source_note']))
     out += ['', '| 公司 / 岗位 | 原记录 | 本轮去向 | 说明 |', '|---|---|---|---|']

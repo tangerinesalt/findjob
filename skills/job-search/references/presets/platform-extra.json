@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "extra_queries": {
+    "yupao": 5,
+    "linkedin": 5
+  },
+  "linkedin_age_months": 3,
+  "linkedin_allow_unknown": true
+}

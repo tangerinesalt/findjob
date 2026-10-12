@@ -11,7 +11,7 @@ _SITE = re.compile(r'(?<![^\s(])(-?)site:([^\s\"\'()<>|]+)', re.IGNORECASE)
 
 
 def default_policy():
-    """Return a fresh policy for a new search run, without changing its profile."""
+    """Legacy opt-in preset; new runs do not automatically use this policy."""
     return {'version': 1, 'extra_queries': {'yupao': 5, 'linkedin': 5},
             'linkedin_age_months': 3, 'linkedin_allow_unknown': True}
 
@@ -29,8 +29,8 @@ def _policy(run):
     required = {'version', 'linkedin_age_months', 'linkedin_allow_unknown'}
     if not isinstance(policy, dict) or not required <= policy.keys() or set(policy) - required - {'extra_queries'}:
         raise ValueError('platform_policy 字段无效')
-    if type(policy['version']) is not int or policy['version'] != 1:
-        raise ValueError('仅支持 platform_policy version=1')
+    if type(policy['version']) is not int or policy['version'] not in (1, 2):
+        raise ValueError('仅支持 platform_policy version=1/2')
     _integer(policy['linkedin_age_months'], 'LinkedIn 日期月数')
     if type(policy['linkedin_allow_unknown']) is not bool:
         raise ValueError('LinkedIn 未知日期策略须为布尔值')
@@ -171,6 +171,15 @@ def _snapshot(run):
 def validate(run):
     """Validate policy, recorded allocations and caps without changing the run."""
     _snapshot(run)
+    ids = set()
+    for event in run.get('searches', []) + run.get('accesses', []):
+        if not isinstance(event, dict):
+            raise ValueError('调用记录须为对象')
+        if 'event_id' in event:
+            value = event['event_id']
+            if not isinstance(value, str) or not value.strip() or value in ids:
+                raise ValueError('调用 event_id 无效或重复')
+            ids.add(value)
 
 
 def summary(run):

@@ -38,8 +38,27 @@ def add_event(data, event, page=False):
         raise ValueError('调用记录必须为对象')
     events = data.setdefault('accesses' if page else 'searches', [])
     event = dict(event)
-    if event.get('event_id') and any(e.get('event_id') == event['event_id'] for e in events):
-        return False
+    if not page:
+        event.setdefault('phase', 'enrichment' if data.get('mode') == 'enrich' else 'discovery')
+    event_id = event.get('event_id')
+    if event_id is not None:
+        if not isinstance(event_id, str) or not event_id.strip():
+            raise ValueError('event_id 须为非空字符串')
+        for name in ('searches', 'accesses'):
+            for previous in data.get(name, []):
+                if previous.get('event_id') != event_id:
+                    continue
+                normalized = dict(previous)
+                if name == 'searches':
+                    normalized.setdefault('phase', 'enrichment' if data.get('mode') == 'enrich' else 'discovery')
+                comparable = dict(event)
+                for value in (normalized, comparable):
+                    value.setdefault('note', '')
+                    if name == 'searches':
+                        value.setdefault('budget_bucket', 'general')
+                if name != ('accesses' if page else 'searches') or normalized != comparable:
+                    raise ValueError('event_id 已用于不同调用内容：' + event_id)
+                return False
     if event.get('outcome') not in ('success', 'no_matches', 'blocked'):
         raise ValueError('outcome 无效')
     required = ('url',) if page else ('query', 'source')

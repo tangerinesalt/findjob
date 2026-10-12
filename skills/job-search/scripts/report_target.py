@@ -203,6 +203,10 @@ def prepare(workspace, mode, as_of, report=None, context_report=None, queries=No
 def publish(task_path, summary):
     task_path = Path(task_path).resolve()
     task = json.loads(read(task_path))
+    spec = importlib.util.spec_from_file_location('findjob_search_budget', Path(__file__).with_name('search_budget.py'))
+    budget = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(budget)
+    budget.validate(task)
     if task["status"] == "complete":
         raise ValueError(f"该任务已交付：{task['output']}；继续编辑应建立新任务。")
     if not summary.strip():
@@ -211,6 +215,9 @@ def publish(task_path, summary):
     if not is_report(working):
         raise ValueError("工作稿缺少岗位清单结构，不能交付。")
     working_content = read(working)
+    if task['mode'] == 'refresh':
+        working_content = working_content.replace('### 未纳入与去重\n', '### 搜索时的未纳入与去重（历史记录）\n')
+        working_content = working_content.replace('### 检索覆盖与限制\n', '### 搜索时的检索覆盖与限制（历史记录）\n')
     if inherited_platform_policy(working_content) != task.get('platform_policy'):
         raise ValueError('工作稿平台策略与本轮任务不一致；不得丢失或静默修改原筛选例外')
     if task.get('platform_policy') and not any(line.startswith('平台例外：') for line in working_content.splitlines()):
@@ -224,7 +231,7 @@ def publish(task_path, summary):
     ending = f"_{label}_{task['operation_date'].replace('-', '')}"
     # Publish to the active workspace, including when an explicit source is elsewhere.
     workspace = Path(task["workspace"])
-    content = rebase_links(read(working), source.parent, workspace).rstrip() + f"\n\n## 本轮{label}记录\n\n处理日期：{task['operation_date']}（不是岗位发布日期或刷新日期）。\n\n{summary.strip()}\n"
+    content = rebase_links(working_content, source.parent, workspace).rstrip() + f"\n\n## 本轮{label}记录\n\n处理日期：{task['operation_date']}（不是岗位发布日期或刷新日期）。\n\n{summary.strip()}\n"
     if changed:
         content += "\n原清单在处理期间发生变化或已移走；本结果基于任务开始时的快照。\n"
     for index in range(1, 10000):

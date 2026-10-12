@@ -158,6 +158,10 @@ def validate_run(run):
     require(isinstance(run, dict), "运行文件必须为对象")
     require(run.get("schema_version") == 1, "仅支持运行 schema_version=1")
     iso(run.get("as_of"))
+    require(run.get('relative_date_mode') in (None, 'profile'), 'relative_date_mode 无效')
+    if 'report_options' in run:
+        require(isinstance(run['report_options'], dict) and run['report_options'].keys() <= {'company_details'}, 'report_options 无效')
+        require(type(run['report_options'].get('company_details', True)) is bool, 'company_details 须为布尔值')
     validate_profile(run.get("profile"))
     reserved = run.get('reserved_queries')
     require(type(reserved) is int and 0 <= reserved <= run['profile']['budget']['queries'], '预留额度超过预算或字段无效')
@@ -199,6 +203,7 @@ def validate_job(j):
     require(isinstance(s, dict) and isinstance(s.get("text"), str) and s["text"].strip(), "薪资必须保留原文 text")
     require(isinstance(s.get("currency"), str), "薪资缺 currency")
     require(s.get("period") in ("month", "year", "day", "hour", "unknown"), "薪资周期无效")
+    require(s.get('basis', 'base') in ('base', 'total', 'unknown'), '薪资 basis 无效')
     for key in ("min", "max"):
         require(key in s and (s[key] is None or number(s[key])), "薪资数值须为元、非负有限数或 null")
     require(s.get("months") is None or type(s["months"]) is int and 1 <= s["months"] <= 24, "年发薪月数无效")
@@ -219,7 +224,7 @@ def validate_job(j):
         require(isinstance(item, dict) and url(item.get("url")) and all(isinstance(item.get(k), str) and item[k].strip() for k in ("text", "date", "scope")), "讨论缺 text/url/date/scope")
 
 
-def evaluate(j, p, today, platform_policy=None):
+def evaluate(j, p, today, platform_policy=None, relative_date_mode=None):
     rejected, pending, notes = [], [], list(j.get("notes", []))
     e = j.get("evidence", {})
     if j["status"] == "closed" or j.get("deadline") and iso(j["deadline"]) < today:
@@ -246,6 +251,8 @@ def evaluate(j, p, today, platform_policy=None):
     if p["exclude_games"] and (j["games"] == "unknown" or not proof(e.get("games"))):
         pending.append("非游戏业务未核实")
     date_policy = linkedin_dates.evaluate(j, today, platform_policy)
+    if date_policy is None and relative_date_mode == 'profile':
+        date_policy = linkedin_dates.profile_window(j, today, p['freshness'])
     current = []
     if date_policy is not None:
         rejected.extend(date_policy['rejected'])
@@ -275,7 +282,8 @@ def evaluate(j, p, today, platform_policy=None):
     s, rule = j["salary"], p["salary"]
     values = [s["min"], s["max"]]
     known = any(v is not None for v in values)
-    has_threshold = rule["min_lower_monthly"] > 0 or rule["min_upper_monthly"] > 0
+    requirement = rule.get('requirement')
+    has_threshold = (requirement['min_lower'] > 0 or requirement['min_upper'] > 0) if requirement else rule["min_lower_monthly"] > 0 or rule["min_upper_monthly"] > 0
     if known and not proof(e.get("salary")):
         pending.append("数值薪资缺来源证据")
     elif not known:
@@ -288,6 +296,29 @@ def evaluate(j, p, today, platform_policy=None):
             rejected.append("画像不接受面议或未披露薪资")
         else:
             notes.append("薪资无可比较数值，未证明达到薪资门槛" if has_threshold else "薪资未披露或面议；本轮未设置薪资门槛")
+    elif requirement:
+        factor = None
+        if s['currency'].upper() == rule['currency'].upper() and s.get('basis', 'base') == requirement['basis']:
+            if s['period'] == requirement['period']:
+                factor = 1
+            elif s['period'] == 'month' and requirement['period'] == 'year' and s.get('months'):
+                factor = s['months']
+            elif s['period'] == 'year' and requirement['period'] == 'month' and s.get('months'):
+                factor = 1 / s['months']
+        if factor is None:
+            if has_threshold:
+                pending.append('币种、薪资口径或计薪周期不可直接比较；不推算工时、奖金或汇率')
+            else:
+                notes.append('币种、薪资口径或计薪周期未换算；本轮未设置薪资门槛')
+        else:
+            for key, threshold in (('min', 'min_lower'), ('max', 'min_upper')):
+                if s[key] is not None and s[key] * factor < requirement[threshold]:
+                    rejected.append('薪资低于下限或上限门槛')
+                    break
+            if factor != 1:
+                notes.append(f"按明确的每年 {s['months']} 次固定薪资比较；未推算额外奖金")
+            if None in values:
+                notes.append('薪资范围未完整披露，仅检查已知边界')
     elif s["currency"].upper() != rule["currency"].upper() or s["period"] not in ("month", "year"):
         if has_threshold:
             pending.append("币种或计薪周期不可直接与月薪门槛比较")
@@ -353,7 +384,7 @@ def check(run):
     records, result['duplicates'] = job_facts.consolidate(valid)
     result['records'] = records
     for job in records:
-        item = evaluate(job, run['profile'], iso(run['as_of']), run.get('platform_policy'))
+        item = evaluate(job, run['profile'], iso(run['as_of']), run.get('platform_policy'), run.get('relative_date_mode'))
         result[item['state']].append(item)
     identities = {j['id']: tuple(norm(j[k]) for k in ('company', 'title', 'location')) + (canonical(j['job_url']), j['id']) for j in records}
     for state in ('kept', 'excluded', 'pending'):
@@ -431,6 +462,10 @@ def render(run, result):
     salary_rule = p['salary']
     salary_summary = (f"{esc(salary_rule['currency'])} 月薪下限 ≥ {salary_rule['min_lower_monthly']:g}，上限 ≥ {salary_rule['min_upper_monthly']:g}"
                       if salary_rule['min_lower_monthly'] > 0 or salary_rule['min_upper_monthly'] > 0 else '本轮不设薪资门槛')
+    if 'requirement' in salary_rule:
+        r = salary_rule['requirement']
+        period = {'year': '年', 'month': '月', 'day': '日', 'hour': '小时'}[r['period']]
+        salary_summary = f"{esc(salary_rule['currency'])}/{period}，{'固定薪资' if r['basis'] == 'base' else '总包'}下限 ≥ {r['min_lower']:g}，上限 ≥ {r['min_upper']:g}；原始需求：{esc(r['original_text'])}"
     out = [f"# 岗位报告：{esc(p['name'])}", "<!-- findjob:report v2 -->", "", f"检索基准日：{today}。本轮纳入 **{len(kept)} 条岗位、{company_count} 家单位**，其中相关方向 {adjacent} 条；不代表全网总量。", "",
            "## 第一部分：岗位简表", "",
            f"时间：发布自 {back_months(today, p['freshness']['published_months'])} 起，{'且' if p['freshness'].get('mode', 'any') == 'all' else '或'}刷新自 {back_months(today, p['freshness']['refreshed_months'])} 起，均截至 {today}。",
@@ -446,7 +481,8 @@ def render(run, result):
         policy = run['platform_policy']
         out.insert(2, '<!-- findjob:platform-policy ' + json.dumps(policy, ensure_ascii=False, sort_keys=True, separators=(',', ':')) + ' -->')
         index = next(i for i, line in enumerate(out) if line.startswith('薪资：'))
-        age_rule = f"LinkedIn按岗位正文相对时间筛选，满{policy['linkedin_age_months']}个月排除，日期未知允许保留并标注" if policy['linkedin_allow_unknown'] and policy['linkedin_age_months'] > 0 else 'LinkedIn日期例外未启用'
+        age_enabled = policy['linkedin_age_months'] > 0 and (policy['version'] == 2 or policy['linkedin_allow_unknown'])
+        age_rule = f"LinkedIn按岗位正文时间筛选，满{policy['linkedin_age_months']}个月排除，日期未知{'允许保留并标注' if policy['linkedin_allow_unknown'] else '待核实'}" if age_enabled else 'LinkedIn日期例外未启用'
         extras = policy.get('extra_queries', {'yupao': 0, 'linkedin': 0})
         out.insert(index, f"平台例外：{age_rule}；其他平台沿用上述时间条件。新岗位搜索额外额度：鱼泡最多{extras['yupao']}次，LinkedIn最多{extras['linkedin']}次；复核和补充不新增此额度。")
     for i, item in enumerate(kept, 1):
@@ -478,6 +514,8 @@ def render(run, result):
             out.append(f"- **截止日期**：{j['deadline']}。")
         for key, label in DETAILS.items():
             detail = j.get("details", {}).get(key)
+            if not run.get('report_options', {}).get('company_details', True) and key in ('insured', 'legal_risk') and detail is None:
+                continue
             out.append(report_format.detail_line(key, compact_detail(detail)))
         discussions = j.get("discussions", [])
         out.append("- **岗位讨论及链接**：" + ("未取得可核实的对应讨论。" if not discussions else ""))
@@ -534,6 +572,7 @@ def main(argv=None):
     init.add_argument("--as-of", required=True)
     init.add_argument("--run", required=True)
     init.add_argument('--no-platform-policy', action='store_true', help='关闭本轮两平台专用预算及LinkedIn日期例外')
+    init.add_argument('--platform-policy', help='显式选用平台策略 JSON；省略时没有额外额度或日期例外')
     budget = commands.add_parser("budget", help="单写者预留搜索额度；不执行搜索")
     budget.add_argument("--run", required=True)
     budget.add_argument("--count", type=int, required=True)
@@ -555,8 +594,12 @@ def main(argv=None):
             iso(args.as_of)
             run = dict(schema_version=1, as_of=args.as_of, profile=profile, reserved_queries=0, searches=[], jobs=[], notes=[], status='in_progress', output=None)
             run.update(coverage=lead_tracking.initial(), leads=[])
-            if not args.no_platform_policy:
-                run.update(platform_policy=search_budget.default_policy(), reserved_platform_queries={'yupao': 0, 'linkedin': 0})
+            run['relative_date_mode'] = 'profile'
+            run['report_options'] = {'company_details': False}
+            require(not (args.no_platform_policy and args.platform_policy), '平台策略参数不能同时启用和关闭')
+            if args.platform_policy:
+                run.update(platform_policy=load(args.platform_policy), reserved_platform_queries={'yupao': 0, 'linkedin': 0})
+            validate_run(run)
             save(args.run, run, replace=False)
             print(f"Created: {Path(args.run).resolve()}")
             return 0

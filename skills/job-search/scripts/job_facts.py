@@ -87,7 +87,8 @@ def consolidate(records):
             salaries.sort(key=lambda p: (-sum(p[1].get(k) is not None for k in ('min', 'max')), not bool(p[0].get('evidence', {}).get('salary', {}).get('note')), canonical(p[0]['job_url']), p[0]['id']))
             result['salary'] = copy.deepcopy(salaries[0][1])
             result.setdefault('evidence', {})['salary'] = copy.deepcopy(salaries[0][0].get('evidence', {}).get('salary', {}))
-            comparable = [(j, {k: s.get(k) for k in ('currency', 'period', 'min', 'max', 'months')}) for j, s in salaries]
+            comparable = [(j, {**{k: s.get(k) for k in ('currency', 'period', 'min', 'max', 'months')},
+                                'basis': s.get('basis', 'base')}) for j, s in salaries]
             conflict('salary', comparable)
         result['dates'] = unique(d for j in group for d in j.get('dates', []))
         if any('relative_dates' in j for j in group):

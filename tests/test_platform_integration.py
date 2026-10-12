@@ -91,7 +91,7 @@ class PlatformIntegration(unittest.TestCase):
         self.assertEqual(len(self.check(legacy)['pending']), 1)
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
             path = Path(directory) / 'run.json'
-            self.assertEqual(report.main(['init', '--profile', str(SKILL / 'references/unity-non-game.json'),
+            self.assertEqual(report.main(['init', '--profile', str(SKILL / 'references/presets/unity-non-game.json'),
                                          '--as-of', '2026-10-09', '--run', str(path), '--no-platform-policy']), 0)
             self.assertNotIn('platform_policy', report.load(path))
 

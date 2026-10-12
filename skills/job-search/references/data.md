@@ -5,15 +5,13 @@
 Python 3.10+，仅标准库。以下 `<skill>` 指本 SKILL.md 所在目录，路径含空格时加引号。
 
 ```text
-python -X utf8 "<skill>/scripts/job_report.py" init --profile "<skill>/references/unity-non-game.json" --as-of 2026-09-21 --run ".scratch/findjob/20260921-01/run.json"
+python -X utf8 "<skill>/scripts/job_report.py" init --profile "<工作空间>/画像名称.md" --as-of 2026-09-21 --run ".scratch/findjob/20260921-01/run.json"
 python -X utf8 "<skill>/scripts/job_report.py" budget --run ".scratch/findjob/20260921-01/run.json" --count 4
-python -X utf8 "<skill>/scripts/job_report.py" budget --run ".scratch/findjob/20260921-01/run.json" --bucket yupao --count 2
-python -X utf8 "<skill>/scripts/job_report.py" budget --run ".scratch/findjob/20260921-01/run.json" --bucket linkedin --count 2
 python -X utf8 "<skill>/scripts/job_report.py" check --run ".scratch/findjob/20260921-01/run.json"
 python -X utf8 "<skill>/scripts/job_report.py" render --run ".scratch/findjob/20260921-01/run.json" --output "岗位报告_20260921.md"
 ```
 
-日期是示例，执行时替换。init 不覆盖已有运行；继续时读取旧文件。新运行默认启用 [平台策略](platforms.md)，用户本次明确日期/预算要求优先；完全沿用原规则时给 init 加 `--no-platform-policy`。旧运行不自动迁移或加额。render 默认不覆盖已有报告，要更新同一报告时显式加 `--replace`。画像支持 UTF-8 Markdown 或 JSON，运行仍为 UTF-8 JSON，可通过文件编辑工具更新；仅主代理写 run.json。`budget` 必须在搜索前预留，缺省 `--bucket general`；失败搜索也记入实际日志，并行分支按池先预留，子代理不用此命令。账本不是对搜索工具的强制拦截器。
+日期是示例，执行时替换。init 不覆盖已有运行；继续时读取旧文件。新运行默认无平台例外；显式选用方式见 [平台策略](platforms.md)。`--no-platform-policy` 保留为兼容别名，不与 `--platform-policy` 同用。旧运行不自动迁移或加额。render 默认不覆盖已有报告，要更新同一报告时显式加 `--replace`。画像支持 UTF-8 Markdown 或 JSON，运行仍为 UTF-8 JSON，可通过文件编辑工具更新；仅主代理写 run.json。`budget` 必须在搜索前预留，缺省 `--bucket general`；失败搜索也记入实际日志，并行分支按池先预留，子代理不用此命令。账本不是对搜索工具的强制拦截器。
 
 ## 中文读写
 
@@ -23,7 +21,7 @@ python -X utf8 "<skill>/scripts/job_report.py" render --run ".scratch/findjob/20
 
 ## 画像 v1
 
-使用 unity-non-game.json 作为格式示例；字段必须齐全。keywords/locations/preference 是给模型理解的字符串数组；locations 空表示不限。额外硬条件写 `hard_requirements` 字符串数组，模型用 `profile_match` 和证据判断。脚本不靠简单字符串匹配推断学历或行业。所有未知顶层字段会报错，避免拼错字段后静默失效。
+使用 job-profile 的 draft 命令生成完整结构；可选行业预设不作为格式默认值。keywords/locations/preferences 是给模型理解的字符串数组；locations 空表示不限。额外硬条件写 `hard_requirements` 字符串数组，模型用 `profile_match` 和证据判断。脚本不靠简单字符串匹配推断学历或行业。所有未知顶层字段会报错，避免拼错字段后静默失效。
 
 init 可用 `--overrides <JSON文件>` 将本次条件递归覆盖选定画像；对象递归合并、数组整体替换。完整合并结果保存进运行，原画像不变。去掉薪资门槛用数值 0，扩大相邻方向用 include_adjacent=true。两个薪资门槛独立设置，允许仅设置其中一个。
 
@@ -35,11 +33,13 @@ v1 可选扩展：`target_roles`、`excluded_keywords`、`excluded_locations`、
 
 init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`。启用平台策略的新运行还保存 `platform_policy`、`reserved_platform_queries`；准确结构与各池限制见 [platforms.md](platforms.md)。`reserved_queries` 仍只表示常规池预留，不含两平台额外池。小批保存与完成状态用 [progress.md](progress.md) 的命令；无需另写临时保存脚本。
 
+新运行保存 `relative_date_mode="profile"`，使正文相对时间按画像窗口比较；绝对与相对证据可按日期类型组合，冲突不选有利值。`report_options.company_details=false` 默认省略完全没有信息的参保/法律风险字段；用户要求完整企业信息表时设true。实际取得的企业资料始终保留；旧运行缺这些字段时保持旧行为。
+
 `searches` 每项：`{"query":"实际检索词","source":"web/官网等","phase":"discovery","budget_bucket":"general","outcome":"success","note":"简短结果"}`。只有宿主实际使用 domains 限定时才把原列表记入可选 `domains` 字段。
 
 - phase 为 discovery 或 enrichment；outcome 为 success、no_matches 或 blocked。
 - no_matches 只指该查询未发现候选，不表示市场无岗位；blocked 说明验证码/网络/权限等原因。
-- 每个搜索 query 一项，页面打开不计 query。budget_bucket 为 general/yupao/linkedin，省略按 general。每池实际数不得超过该池预留与上限，三池真实调用合计默认最多 70；enrichment 只能用 general 且仍包含在常规预算中。旧单池运行沿用原上限，不因新文档增加预算。
+- 每个搜索 query 一项，页面打开不计 query。budget_bucket 为 general/yupao/linkedin，省略按 general。每池实际数不得超过该池预留与上限，默认常规池最多 60，只有显式选用额外额度时才增加总上限；enrichment 只能用 general 且仍包含在常规预算中。旧单池运行沿用原上限，不因新文档增加预算。
 - notes 为字符串数组，记录覆盖缺口、预算分配和中断后下一步。事实记录随批落盘；不要将完整网页、个人联系方式或简历复制进来。
 
 ## 岗位 v1
@@ -62,8 +62,8 @@ init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`�
   "recruiter": "employer",
   "profile_match": "yes",
   "evidence": {
-    "relevance": {"url":"https://example.com/jobs/123","note":"职责明确使用Unity开发工业场景"},
-    "games": {"url":"https://example.com/jobs/123","note":"工作对象为工业设备仿真"},
+    "relevance": {"url":"https://example.com/jobs/123","note":"职责明确承担财务分析与预算管理"},
+    "games": {"url":"https://example.com/jobs/123","note":"职责以财务分析为主；本示例未要求排除任何行业"},
     "recruiter": {"url":"https://example.com/jobs/123","note":"企业官网实名职位"},
     "profile_match": {"url":"https://example.com/jobs/123","note":"符合城市和附加硬条件；学历标签与正文差异已记录"},
     "salary": {"url":"https://example.com/jobs/123","note":"该岗位月薪6000至10000元"}
@@ -71,8 +71,8 @@ init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`�
   "salary": {"text":"6–10K/月","currency":"CNY","period":"month","min":6000,"max":10000,"months":null},
   "dates": [{"value":"2026-09-20","kind":"refreshed","url":"https://example.com/jobs/123","note":"职位标题旁显示9月20日更新，本次确认年份"}],
   "details": {
-    "duties": {"text":"工业场景与设备交互开发；接口联动。","sources":["https://example.com/jobs/123"]},
-    "requirements": {"text":"C#、Unity、性能优化。","sources":["https://example.com/jobs/123"]},
+    "duties": {"text":"预算分析、报表整理与业务沟通。","sources":["https://example.com/jobs/123"]},
+    "requirements": {"text":"财务分析、Excel、沟通能力。","sources":["https://example.com/jobs/123"]},
     "benefits": {"text":"公司介绍列五险一金。","sources":["https://example.com/jobs/123"]}
   },
   "discussions": [],

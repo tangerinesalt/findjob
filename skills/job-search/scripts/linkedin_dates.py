@@ -180,6 +180,15 @@ def _bounds(record):
 
 
 def evaluate(job, today, policy):
+    result = _evaluate(job, today, policy)
+    if result is not None and not policy.get('linkedin_allow_unknown', False) and not result['date'] and ('未核实' in result['display'] or result['evidence'] is None):
+        result['pending'].append('平台策略不允许日期未知，需核实岗位日期')
+        result['display'] = result['display'].replace('按 LinkedIn 例外保留', '待核实')
+        result['notes'] = [n for n in result['notes'] if '例外保留' not in n]
+    return result
+
+
+def _evaluate(job, today, policy):
     """Return date findings for an explicitly enabled, confirmed LinkedIn job, else None.
 
     Relative observations remain relative. A newer observation of the same URL
@@ -188,8 +197,9 @@ def evaluate(job, today, policy):
     a stale "3 days ago". Closed status and other hard conditions belong to the caller.
     """
     if (not isinstance(policy, dict) or type(policy.get("version")) is not int
-            or policy["version"] != 1 or type(policy.get("linkedin_age_months")) is not int
-            or policy["linkedin_age_months"] <= 0 or policy.get("linkedin_allow_unknown") is not True):
+            or policy["version"] not in (1, 2) or type(policy.get("linkedin_age_months")) is not int
+            or policy["linkedin_age_months"] <= 0
+            or policy['version'] == 1 and policy.get('linkedin_allow_unknown') is not True):
         return None
     urls = {job.get("job_url", "")}
     urls.update(record.get("url", "") for record in job.get("source_records", [])
@@ -241,3 +251,63 @@ def evaluate(job, today, policy):
         return _result(notes=notes + ["相对年龄区间跨越自然月边界，日期未核实；按例外保留"],
                        display=f"{raw}；日期未核实（按 LinkedIn 例外保留）", evidence=evidence)
     return _result(notes=notes, display=f"{raw}；按 LinkedIn 例外保留", evidence=evidence)
+
+
+def profile_window(job, today, freshness):
+    """Combine typed absolute/relative evidence using the profile's actual window.
+
+    Intervals remain intervals; conflicts or uncertain boundaries stay pending.
+    Runs without relative evidence use the original absolute-date evaluator.
+    """
+    urls = {_canonical(job['job_url'])}
+    urls.update(_canonical(record['url']) for record in job.get('source_records', []) if _url(record.get('url')))
+    records = [r for r in job.get('relative_dates', []) if _proof(r, body=True) and _canonical(r['url']) in urls]
+    if not records:
+        return None
+    latest = {}
+    for r in records:
+        key = (_canonical(r['url']), r.get('kind', 'job_time'))
+        latest[key] = max(latest.get(key, ''), r['observed_at'])
+    records = [r for r in records if r['observed_at'] == latest[(_canonical(r['url']), r.get('kind', 'job_time'))]]
+    result = _result(display='相对岗位日期待核实', evidence=records[0])
+    result['exception'] = False
+    result['notes'] = ['按画像时间窗口比较正文相对时间区间，未推算精确发布日期']
+    if any(_iso(r['observed_at']) > today for r in records):
+        result['pending'].append('相对时间观测日位于未来')
+        return result
+    absolute = [r for r in job.get('dates', []) if r.get('kind') in KINDS and _proof(r)]
+    if any(_iso(r['value']) > today for r in absolute):
+        result['pending'].append('岗位证据含未来日期，需解决冲突')
+        return result
+    outcomes = {}
+    for kind in KINDS:
+        group = [r for r in records if r.get('kind', 'job_time') == kind]
+        typed = [r for r in absolute if r['kind'] == kind]
+        bounds = [_bounds(r) for r in group] + [(_iso(r['value']), _iso(r['value'])) for r in typed]
+        if not bounds:
+            continue
+        if any(b is None for b in bounds):
+            outcomes[kind] = 'unknown'
+            continue
+        oldest, newest = max(b[0] for b in bounds), min(b[1] for b in bounds)
+        cutoff = _back_months(today, freshness['published_months' if kind == 'published' else 'refreshed_months'])
+        if oldest > newest:
+            result['pending'].append('同类相对岗位时间存在冲突')
+            return result
+        outcomes[kind] = 'old' if newest < cutoff else 'current' if oldest >= cutoff and newest <= today else 'unknown'
+    if freshness.get('mode', 'any') == 'all':
+        states = [outcomes.get(kind, 'unknown') for kind in ('published', 'refreshed')]
+        accepted = all(s == 'current' for s in states)
+        rejected = 'old' in states
+    else:
+        states = list(outcomes.values())
+        accepted = 'current' in states
+        rejected = bool(states) and all(s == 'old' for s in states)
+    raw = '；'.join(f"{r['text']}（{r['observed_at']}观测）" for r in records)
+    raw += ''.join(f"；{r['value']}（{KINDS[r['kind']]}）" for r in absolute)
+    result['display'] = raw + ('；符合画像窗口' if accepted else '；超出画像窗口' if rejected else '；窗口边界待核实')
+    if rejected:
+        result['rejected'].append('岗位相对时间超出画像窗口')
+    elif not accepted:
+        result['pending'].append('相对时间不能证明满足画像窗口或所需日期类型')
+    return result

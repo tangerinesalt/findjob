@@ -138,6 +138,12 @@ def check(content):
     total = re.search(r'本轮纳入 \*\*(\d+) 条岗位、(\d+) 家单位\*\*', content)
     if total and (int(total[1]) != len(rows) or int(total[2]) != len({row[1] for _, row in rows.values() if len(row) == 8})):
         errors.append('报告数量与主表不一致')
+    totals = re.search(r'剔除 (\d+) 条；待核实 (\d+) 条；重复 (\d+) 条。以下不计入主表。', content)
+    if totals:
+        for index, label in enumerate(('剔除', '待核实', '重复'), 1):
+            actual = sum(line.startswith('- ' + label + '：') for line in lines)
+            if int(totals[index]) != actual:
+                errors.append('未纳入统计与处置条目不一致：' + label)
     return {'errors': errors, 'warnings': [], 'managed': True}
 
 
@@ -220,6 +226,10 @@ def apply(content, patch):
     for a, b, replacement in sorted(edits, reverse=True):
         lines[a:b] = replacement
     result = '\n'.join(lines).rstrip() + '\n'
+    # These entries belong to the original search, not to this follow-up round.
+    if changes or 'window' in patch:
+        result = result.replace('### 未纳入与去重\n', '### 搜索时的未纳入与去重（历史记录）\n')
+        result = result.replace('### 检索覆盖与限制\n', '### 搜索时的检索覆盖与限制（历史记录）\n')
     remaining = structure(result)[3]
     companies = len({row[1] for _, row in remaining.values()})
     adjacent = sum('【相关方向】' in row[2] for _, row in remaining.values())

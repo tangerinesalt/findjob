@@ -39,6 +39,15 @@ FIELDS = [
     ('单岗参考时间（分钟）', 'budget.per_job_minutes', 'number', 3),
 ]
 
+# Optional as a group: older Markdown/JSON profiles retain their exact semantics.
+SALARY_FIELDS = [
+    ('薪资比较周期', 'salary.requirement.period', 'text', 'month'),
+    ('薪资下限门槛', 'salary.requirement.min_lower', 'number', 0),
+    ('薪资上限门槛', 'salary.requirement.min_upper', 'number', 0),
+    ('薪资比较口径', 'salary.requirement.basis', 'text', 'base'),
+    ('薪资原始需求', 'salary.requirement.original_text', 'text', ''),
+]
+
 
 def put(data, path, value):
     parts = path.split('.')
@@ -77,10 +86,10 @@ def render(profile):
     out = ['# 求职画像', '',
            '只修改“值”列；字段名称保持不变。此表是搜索读取的唯一配置来源。', '',
            '多项用中文分号“；”分隔；空白表示未设置。布尔值填“是/否”。时间关系填“或/且”。',
-           '薪资门槛以所填币种的元/月计，0表示不设该门槛；时间窗口按自然月计算，0表示当天。',
+           '薪资金额以所填币种的基本单位计，0表示不设该门槛；有薪资比较周期时按该周期比较，旧月薪门槛需为0。时间窗口按自然月计算，0表示当天。',
            '地点、招聘类型、工作方式及排除项为筛选条件；排序偏好与个人背景不自动成为硬条件。', '',
            '| 属性 | 值 |', '|---|---|']
-    for label, path, kind, default in FIELDS:
+    for label, path, kind, default in FIELDS + (SALARY_FIELDS if 'requirement' in profile.get('salary', {}) else []):
         fallback = profile.get('keywords', []) if path == 'target_roles' else default
         value = get(profile, path, fallback)
         if kind == 'list':
@@ -96,7 +105,7 @@ def render(profile):
 
 
 def parse(text):
-    fields = {label: (path, kind) for label, path, kind, _ in FIELDS}
+    fields = {label: (path, kind) for label, path, kind, _ in FIELDS + SALARY_FIELDS}
     rows = {}
     for line in text.splitlines():
         if not line.strip().startswith('|'):
@@ -112,11 +121,15 @@ def parse(text):
         if label in rows:
             raise ValueError(f'画像属性重复：{label}')
         rows[label] = value.replace('\\|', '&#124;')
-    missing = set(fields) - rows.keys()
+    required = {field[0] for field in FIELDS}
+    optional = {field[0] for field in SALARY_FIELDS}
+    missing = (required | (optional if optional & rows.keys() else set())) - rows.keys()
     if missing:
         raise ValueError('画像缺少属性：' + '、'.join(sorted(missing)))
     result = {}
     for label, (path, kind) in fields.items():
+        if label not in rows:
+            continue
         raw = rows[label]
         value = decode(raw)
         if kind == 'list':
@@ -205,10 +218,19 @@ def validate_profile(p):
     require(all(type(f[k]) is int and 0 <= f[k] <= 120 for k in ('published_months', 'refreshed_months')), "时间窗口须为 0–120 个自然月")
     require(f.get('mode', 'any') in ('any', 'all'), '时间关系必须为 any/all')
     s = p["salary"]
-    require(isinstance(s, dict) and s.keys() == {"currency", "min_lower_monthly", "min_upper_monthly", "allow_unknown"}, "salary 规则字段无效")
+    required_salary = {"currency", "min_lower_monthly", "min_upper_monthly", "allow_unknown"}
+    require(isinstance(s, dict) and required_salary <= s.keys() <= required_salary | {'requirement'}, "salary 规则字段无效")
     require(isinstance(s["currency"], str) and bool(s["currency"].strip()), "薪资规则缺币种")
     require(number(s["min_lower_monthly"]) and number(s["min_upper_monthly"]), "薪资门槛应为非负有限数")
     require(type(s["allow_unknown"]) is bool, "薪资未知策略无效")
+    if 'requirement' in s:
+        r = s['requirement']
+        require(isinstance(r, dict) and r.keys() == {'period', 'min_lower', 'min_upper', 'basis', 'original_text'}, '薪资原始需求字段无效')
+        require(r['period'] in ('month', 'year', 'day', 'hour'), '薪资比较周期无效')
+        require(r['basis'] in ('base', 'total'), '薪资比较口径须为 base/total')
+        require(number(r['min_lower']) and number(r['min_upper']), '薪资门槛应为非负有限数')
+        require(isinstance(r['original_text'], str) and bool(r['original_text'].strip()), '保留薪资原始需求')
+        require(s['min_lower_monthly'] == s['min_upper_monthly'] == 0, '新薪资需求不能与旧月薪门槛同时启用')
     b = p["budget"]
     require(isinstance(b, dict) and b.keys() == {"queries", "enrichment_queries", "per_job_minutes"}, "budget 字段无效")
     require(type(b["queries"]) is int and b["queries"] >= 0, "queries 预算须为非负整数")

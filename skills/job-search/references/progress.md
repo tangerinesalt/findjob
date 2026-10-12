@@ -32,3 +32,5 @@ python -X utf8 "<search-skill>/scripts/run_state.py" complete --file "<run.json>
 ```
 
 complete 检查报告格式及其与当前运行结果的对应关系，成功后 status 显示 complete 和输出路径。完成记录不代替网页事实核实；不要把草稿记成最终交付。job-enrich/job-refresh 仍用 report_target.py publish 完成任务，不用此命令，也不猜测旧报告与 run.json 的关联。
+
+event_id 在同一任务的 searches/accesses 中共享命名空间。同ID同规范化内容可幂等重放；同ID异内容或跨类型复用报错，整批原子拒绝。重复实际查询应使用新ID；不可改写已有事件以释放预算。

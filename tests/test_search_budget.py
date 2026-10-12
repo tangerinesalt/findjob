@@ -221,7 +221,8 @@ class SearchBudget(unittest.TestCase):
         budget.reserve(run, 1, 'yupao')
         event = call('general', query='site:yupao.com Unity', event_id='actual-1')
         state.add_event(run, event)
-        self.assertFalse(state.add_event(run, {**event, 'budget_bucket': 'yupao'}))
+        with self.assertRaises(ValueError):
+            state.add_event(run, {**event, 'budget_bucket': 'yupao'})
         self.assertTrue(state.add_event(run, {**event, 'event_id': 'actual-2', 'budget_bucket': 'yupao'}))
         summary = budget.summary(run)
         self.assertEqual(summary['total']['used'], 2)
@@ -297,7 +298,7 @@ class SearchBudget(unittest.TestCase):
         self.assertEqual(budget.summary(run)['total']['limit'], 0)
 
     def test_invalid_policy_and_followup_extra_reservations_are_rejected(self):
-        for patch in ({'version': 2}, {'version': True}, {'linkedin_age_months': True},
+        for patch in ({'version': 99}, {'version': True}, {'linkedin_age_months': True},
                       {'linkedin_allow_unknown': 'yes'}, {'extra_queries': {'yupao': 6, 'linkedin': 5}},
                       {'extra_queries': {'yupao': 5, 'zhaopin': 5}}):
             with self.subTest(patch=patch):

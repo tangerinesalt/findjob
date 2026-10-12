@@ -31,7 +31,7 @@ def job():
 
 
 def run_record(*jobs):
-    return dict(schema_version=1, as_of="2026-09-21", profile=module.load(SKILL / "references" / "unity-non-game.json"), reserved_queries=0, searches=[], jobs=list(jobs), notes=[])
+    return dict(schema_version=1, as_of="2026-09-21", profile=module.load(SKILL / "references" / "presets" / "unity-non-game.json"), reserved_queries=0, searches=[], jobs=list(jobs), notes=[])
 
 
 class Rules(unittest.TestCase):
@@ -221,7 +221,7 @@ class Rules(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="findjob-test-") as directory, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             path = Path(directory) / "run.json"
             output = Path(directory) / "report.md"
-            self.assertEqual(module.main(["init", "--profile", str(SKILL / "references" / "unity-non-game.json"), "--as-of", "2026-09-21", "--run", str(path)]), 0)
+            self.assertEqual(module.main(["init", "--profile", str(SKILL / "references" / "presets" / "unity-non-game.json"), "--as-of", "2026-09-21", "--run", str(path)]), 0)
             self.assertEqual(module.main(["budget", "--run", str(path), "--count", "60"]), 0)
             before = path.read_bytes()
             self.assertEqual(module.main(["budget", "--run", str(path), "--count", "1"]), 1)
