@@ -149,7 +149,7 @@ class Targets(unittest.TestCase):
         task = module.prepare(self.root, "enrich", "2026-09-24", report=str(external))
         external.write_text(REPORT + "外部新注释", encoding="utf-8")
         result = module.publish(task["task"], "历史资料整理。")
-        self.assertEqual(Path(result["output"]).parent, self.root)
+        self.assertTrue(Path(result["output"]).parent.samefile(self.root))
         self.assertTrue(result["source_changed"])
         self.assertIn("基于任务开始时的快照", module.read(result["output"]))
         self.assertIn("外部新注释", module.read(external))
