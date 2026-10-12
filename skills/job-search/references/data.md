@@ -83,7 +83,7 @@ init 生成 `schema_version/as_of/profile/reserved_queries/searches/jobs/notes`�
 - status：open/unknown/closed；deadline 可省略或 null，日期为 YYYY-MM-DD。
 - relevance：core/adjacent/unrelated/unknown；games：yes/no/unknown；recruiter：employer/headhunter/anonymous/unknown；profile_match：yes/no/unknown。
 - dates.kind：published/refreshed/job_time/crawled。crawled 永远不证明招聘新鲜度；job_time 用刷新窗口。用来筛选的日期必须有短证据和有效网页 URL。截止日不是发布日期。
-- 可选 `relative_dates` 记录 LinkedIn 岗位正文相对时间，每项为 `{"text":"3天前","url":"https://www.linkedin.com/jobs/view/123","note":"正文时间","observed_at":"2026-10-09"}`；须保留原文、来源与实际观测日，不编造绝对发布日期。仅启用平台策略且已确认属于该 LinkedIn 岗位时生效，其他平台字段无效；判定与历史观测处理见 [platforms.md](platforms.md)。
+- 可选 `relative_dates` 记录岗位正文相对时间，每项为 `{"text":"3天前","url":"https://example.com/jobs/123","kind":"published","note":"正文明确为发布时间","observed_at":"2026-10-09"}`；保留原文、来源与实际观测日，不编造绝对发布日期。kind 为 published/refreshed/job_time，含义不明时用 job_time，不猜测发布时间。新运行 `relative_date_mode="profile"` 下各平台均按画像窗口比较，缓存时间无法对应实际观测日时保留待核实。明确启用的LinkedIn日期例外按 [platforms.md](platforms.md) 处理；旧运行没有relative_date_mode时保持旧有行为，仅原有LinkedIn策略使用该字段。
 - salary.period：month/year/day/hour/unknown；currency 为原始币种。min/max 为元数值或 null，months 为明确的年发薪月数或 null。面议/未披露用 period=unknown，min=max=null，原文写在 text。披露金额但周期不明时保留 min/max，只将 period 记 unknown；不能把“8000–10000元”改成无金额，也不能擅自补 `/月`。已知任一数值必须提供 salary 证据。
 - evidence 为上述判断依据。缺失不等于通过；筛选输出“待核实”。证据 note 用改写的短描述，不抄整段内容。
 - details 允许 duties、requirements、benefits、work_time、overtime、insured、legal_risk；每项为 text 与 sources URL 列表。未取得就省略，脚本标未核实，不能填造假来源。
