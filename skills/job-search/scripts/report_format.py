@@ -169,7 +169,7 @@ def apply(content, patch):
     for update in patch.get('jobs', []):
         allowed = {'number', 'job_url', 'details', 'basic', 'state', 'reason', 'sources', 'checked_at', 'date_evidence'}
         if set(update) - allowed:
-            raise ValueError('岗位补丁包含未知字段')
+            raise ValueError('岗位补丁包含未知字段：' + '、'.join(sorted(set(update) - allowed)))
         number = update.get('number')
         if not number and update.get('job_url'):
             matches = [n for n, (_, row) in rows.items() if any(unquote(u) == update['job_url'] for u in re.findall(r'\]\(([^)]+)\)', row[7]))]
@@ -199,7 +199,7 @@ def apply(content, patch):
             raise ValueError('state 无效')
         if basic or 'state' in update:
             if not update.get('reason') or not update.get('sources') or not all(valid_url(u) for u in update['sources']):
-                raise ValueError('基本信息或筛选变化需 reason 和 sources')
+                raise ValueError('基本信息或筛选变化需非空 reason 和仅含有效 URL 的 sources 数组；来源说明写入 reason，不放入 sources')
             date.fromisoformat(update['checked_at'])
             block = replace_field(block, '本轮核实', '- **本轮核实**：' + sentence(update['checked_at'] + '；' + update['reason']) + ' '.join(link(u) for u in update['sources']))
         if 'date' in basic:
